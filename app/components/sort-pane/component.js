@@ -1,0 +1,1 @@
+export { default } from 'ember-drag-drop-sort/components/sort-pane/component';

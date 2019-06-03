@@ -1,0 +1,27 @@
+.draggable {
+  padding: 10px;
+  margin: 5px;
+  border: 1px solid #000;
+  cursor: grab;
+  background: #f1f1f1;
+}
+
+.droppable {
+  padding: 20px;
+  margin: 5px;
+  background-color: #ccc;
+}
+
+.sortable-pane {
+  width: 420px;
+  height: 200px;
+  overflow: scroll;
+  float: left;
+  border: 1px solid #666;
+  margin-right: 10px;
+  padding: 10px;
+}
+
+.hide {
+  display: none;
+}

@@ -1,0 +1,23 @@
+{{#each collection as |item idx|}}
+  {{#if (and isActiveSortPane (eq currentOverIndex idx) overOnTopHalf)}}
+    {{sort-placeholder}}
+  {{/if}}
+
+  {{yield (hash
+    item=(component 'sortable-item'
+      position=idx
+      content=item
+      items=items
+      scrollContainer=scrollContainer
+      scrollSpeed=scrollSpeed
+      dragstart=(action 'onDragStart' item idx)
+      dragend=(action 'updateList' targetIndex)
+      dragover=(action 'updateDragState'))
+  )}}
+
+  {{#if (and isActiveSortPane (eq currentOverIndex idx) overOnBottomHalf)}}
+    {{sort-placeholder}}
+  {{/if}}
+{{else}}
+  {{sort-placeholder}}
+{{/each}}
