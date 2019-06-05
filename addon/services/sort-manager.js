@@ -1,19 +1,16 @@
 import Service from '@ember/service';
 import { computed } from '@ember/object';
-import ArrayProxy from '@ember/array/proxy';
 import { A } from '@ember/array';
 
 export default Service.extend({
   currentDropPosition: null,
+  sourceIndex: null,
+  targetIndex: null,
 
   sourceList: computed(function() {
-    return ArrayProxy.create({
-      content: A([])
-    });
+    return A();
   }),
   targetList: computed(function() {
-    return ArrayProxy.create({
-      content: A([])
-    });
+    return A();
   })
 });

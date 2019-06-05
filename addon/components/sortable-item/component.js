@@ -2,12 +2,13 @@ import Component from '@ember/component';
 import layout from './template';
 import { bind } from '@ember/runloop';
 import { get, set, setProperties } from '@ember/object';
-import { capitalize } from '@ember/string';
 import $ from 'jquery';
 import { inject } from '@ember/service';
 import { assign } from '@ember/polyfills';
-import { isEqual } from '@ember/utils';
+import { isEqual, isEmpty } from '@ember/utils';
 import { reads } from '@ember/object/computed';
+import { assert } from '@ember/debug';
+import moment from 'moment';
 
 const CONTAINERSIDES = ['Left', 'Right', 'Top', 'Bottom'];
 
@@ -19,24 +20,32 @@ export default Component.extend({
   sortManager: inject(),
   currentSortPane: reads('sortManager.activeSortPane'),
   scrollPane: reads('sortManager.activeSortPane'),
+  sourceIndex: reads('sortManager.sourceIndex'),
+  targetIndex: reads('sortManager.targetIndex'),
+  cloneNode: null,
+  mousedownTime: null,
+  mouseupTime: null,
+  delay: 500,
 
   init() {
     this._super(...arguments);
 
-    this._startDrag = this._startDrag.bind(this);
-    this._onMouseup = this._onMouseup.bind(this);
-    this._onMousemove = this._onMousemove.bind(this);
-    this._simulateDrag = bind(this, this._simulateDrag);
-    this._preventDefaultBehavior = this._preventDefaultBehavior.bind(this);
+    assert('tagName should not be empty', isEmpty(get(this, 'tagName')));
+
+    this._onDragstart = bind(this, this._onDragstart);
+    this._onDrag = bind(this, this._onDrag);
+    this._onDragend = bind(this, this._onDragend);
+    this._onDragover = bind(this, this._onDragover);
+    this._preventDefaultBehavior = bind(this, this._preventDefaultBehavior);
   },
 
   didInsertElement() {
     this._super(...arguments);
 
     // Registering Events
-    this.get('element').addEventListener('mousedown', this._startDrag);
-    // this.get('element').addEventListener('mousemove', this._simulateDrag);
-    this.$().bind('mousemove.sortabble', this._simulateDrag);
+    this.get('element').addEventListener('mousedown', this._onDragstart);
+    // this.get('element').addEventListener('mousemove', this._onDragover);
+    this.$().bind('mousemove.sortabble', this._onDragover);
     // this.get('element').addEventListener('mouseover', this._onMouseover);
     // This should be a conditional option to prevent click {default: true}
     // this.get('element').addEventListener('click', this._preventDefaultBehavior);
@@ -45,16 +54,9 @@ export default Component.extend({
   willDestroyElement() {
     this._super(...arguments);
 
-    this.get('element').removeEventListener('mousedown', this._startDrag);
+    this.get('element').removeEventListener('mousedown', this._onDragstart);
     // This should replace with javascript event dispatch
     this.$().unbind('mousemove.sortabble');
-  },
-
-  _simulateDrag(ev) {
-    // console.log('mouseOver --> ', ev);
-    if (get(this, 'sortManager.isDragging')) {
-      this._forceDragover(ev);
-    }
   },
 
   _preventDefaultBehavior(ev) {
@@ -63,14 +65,23 @@ export default Component.extend({
     ev.stopImmediatePropagation();
   },
 
-  _startDrag(ev) {
+  _tearDownEvents() {
+    document.removeEventListener('mousemove', this._onDrag);
+    document.removeEventListener('mouseup', this._onDragend);
+  },
+
+  _onDragstart(ev) {
     if (get(this, 'disabled')) {
       return;
     }
 
     this._preventDefaultBehavior(ev);
 
-    set(this, 'isDragging', true);
+    setProperties(this, {
+      mousedownTime: moment(new Date(), 'ss'),
+      targetElement: ev.target,
+      isDragging: true
+    });
 
     let sortableElement = this.get('element');
     let cloneNode = sortableElement.cloneNode(true);
@@ -79,21 +90,21 @@ export default Component.extend({
     let sortableElementClientRect = sortableElement.getBoundingClientRect();
 
     let sortableElementContainer = properties.reduce((previousValue, item) => {
-      let appendProp = isEqual(item, 'border') ? 'Width' : '';
+      let subProp = isEqual(item, 'border') ? 'Width' : '';
 
       CONTAINERSIDES.forEach((side) => {
-        let propertyName = item + side;
-        previousValue[propertyName + appendProp] = parseFloat(sortableElementStyle[propertyName]);
+        let propertyName = item + side + subProp;
+        previousValue[propertyName] = parseFloat(sortableElementStyle[propertyName]);
       });
 
       return previousValue;
     }, {});
 
-    let shiftX = (event.clientX + sortableElementContainer.marginLeft) - sortableElementClientRect.left;
-    let shiftY = (event.clientY + sortableElementContainer.marginTop) - sortableElementClientRect.top;
+    let shiftX = (ev.clientX + sortableElementContainer.marginLeft) - sortableElementClientRect.left;
+    let shiftY = (ev.clientY + sortableElementContainer.marginTop) - sortableElementClientRect.top;
     let grabbedAt = {
-      x: event.clientX - shiftX,
-      y: event.clientY - shiftY,
+      x: ev.clientX - shiftX,
+      y: ev.clientY - shiftY,
     };
     let paddingHorizontal = sortableElementContainer.paddingLeft + sortableElementContainer.paddingRight;
     let paddingVertical = sortableElementContainer.paddingTop + sortableElementContainer.paddingBottom;
@@ -122,7 +133,7 @@ export default Component.extend({
     cloneNode.style.left = `${sortableElementContainer.grabbedAt.x}px`;
     cloneNode.style.top = `${sortableElementContainer.grabbedAt.y}px`;
     cloneNode.style.zIndex = '9999';
-    // TODO:: scroll while dragging
+
     let documentBody = document.getElementsByTagName('body')[0];
 
     documentBody.appendChild(cloneNode);
@@ -132,26 +143,22 @@ export default Component.extend({
       sortableElementContainer
     });
 
-    document.addEventListener('mousemove', this._onMousemove);
-    document.addEventListener('mouseup', this._onMouseup);
+    document.addEventListener('mousemove', this._onDrag);
+    document.addEventListener('mouseup', this._onDragend);
 
     this.sendAction('dragstart', ev);
-    // console.log('mousedown --- >', ev);
   },
 
-  _onMousemove(ev) {
+  _onDrag(ev) {
     // this._preventDefaultBehavior(ev);
 
     if (get(this, 'isDragging')) {
-      let sortableElement = this.get('element');
+      let sortableElement = get(this, 'element');
       let cloneNode = get(this, 'cloneNode');
       let sortableElementContainer = get(this, 'sortableElementContainer');
       let draggedElement = $(cloneNode);
 
       sortableElement.style.display = 'none';
-
-      // console.log('clientX ---> ', ev.clientX, '   &&&&   clientY ---> ', ev.clientY);
-
       cloneNode.style.left = `${ev.clientX - sortableElementContainer.shiftX}px`;
       cloneNode.style.top = `${ev.clientY - sortableElementContainer.shiftY}px`;
 
@@ -166,8 +173,6 @@ export default Component.extend({
       //   cancelable: true,
       //   view: window
       // });
-
-      // console.log(elementBelow, elementBelow.classList.contains('draggable'));
 
       // This should not be css class dependent
       // should be an attribute and readOnly
@@ -187,8 +192,44 @@ export default Component.extend({
       if (draggedElement.length && scrollPane.length && this._hasScroll(scrollPane.get(0))) {
         this._handleScroll(scrollPane, draggedElement);
       }
+    }
+  },
 
-      // this._forceDragover(ev);
+  _onDragend(ev) {
+    set(this, 'mouseupTime', moment(new Date(), 'ss'));
+
+    if (get(this, 'isDragging')) {
+      this._preventDefaultBehavior(ev);
+      this._tearDownEvents();
+
+      let sortableElement = get(this, 'element');
+      let documentBody = document.getElementsByTagName('body')[0];
+
+      set(this, 'isDragging', false);
+
+      documentBody.removeChild(get(this, 'cloneNode'));
+      sortableElement.removeAttribute('style');
+
+      set(this, 'cloneNode', null);
+      get(this, 'currentSortPane').send('updateList', get(this, 'targetIndex'), ev);
+    }
+
+    if (get(this, 'mouseupTime').diff(get(this, 'mousedownTime')) < get(this, 'delay')) {
+      let targetElement = get(this, 'targetElement');
+      $(targetElement).trigger('click');
+    }
+  },
+
+  _onDragover(ev) {
+    if (get(this, 'sortManager.isDragging')) {
+      let sortableElement = this.$();
+      let pageY = ev.originalEvent ? ev.originalEvent.pageY : ev.pageY;
+      let top = sortableElement.offset().top;
+      let height = sortableElement.outerHeight();
+      let isDraggingUp = (pageY - top) < (height / 2);
+      let position = get(this, 'position');
+
+      this.sendAction('dragover', sortableElement, isDraggingUp, position, ev);
     }
   },
 
@@ -202,7 +243,6 @@ export default Component.extend({
     let scrollPaneBottom = scrollPane.offset().top + scrollPane.outerHeight(true);
     let draggedElementTop = draggedElement.offset().top;
     let scrollPaneTop = scrollPane.offset().top;
-    let scrollPaneHeight = scrollPane.outerHeight(true);
     let paneScrolledTill = scrollPane.get(0).clientHeight + scrollPane.get(0).scrollTop;
     let paneScrollHeight = scrollPane.prop('scrollHeight');
     let isDraggingUp = draggedElementTop <= scrollPaneTop;
@@ -210,19 +250,15 @@ export default Component.extend({
     let isDraggingDown = draggedElementBottom >= scrollPaneBottom
     let isNotReachedDown = paneScrolledTill <= paneScrollHeight;
     let isTryingToScroll = isDraggingUp || isDraggingDown;
-// console.log('draggedElementTop :: ', draggedElementTop, '--- scrollPaneTop :: ', scrollPaneTop);
+
     if (isTryingToScroll) {
       if (isDraggingUp && isNotReachedUp) {
-        console.log('dragging Up --> ', scrollPane.scrollTop());
         this._scrollPane(scrollPane.get(0), true);
       }
 
       if (isDraggingDown && isNotReachedDown) {
-        console.log('dragging Down --> ', scrollPane.scrollTop());
         this._scrollPane(scrollPane.get(0));
       }
-
-      console.log('isScrolling ---> ', `isDraggingUp :: ${isDraggingUp}`, `isDraggingDown :: ${isDraggingDown}`);
     }
   },
 
@@ -232,43 +268,5 @@ export default Component.extend({
     } else {
       sortPane.scrollTop += get(this, 'scrollSpeed');
     }
-  },
-
-  _onMouseup(ev) {
-    // console.log('mouseup --- >', ev);
-    if (get(this, 'isDragging')) {
-      this._preventDefaultBehavior(ev);
-      let sortableElement = this.get('element');
-      let documentBody = document.getElementsByTagName('body')[0];
-
-      set(this, 'isDragging', false);
-
-      documentBody.removeChild(get(this, 'cloneNode'));
-      sortableElement.removeAttribute('style');
-
-      document.removeEventListener('mousemove', this._onMousemove);
-      document.removeEventListener('mouseup', this._onMouseup);
-
-      set(this, 'cloneNode', null);
-
-      get(this, 'currentSortPane').send('updateList', get(this, 'sortManager.targetIndex'), ev);
-    }
-  },
-
-  _forceDragover(ev) {
-    let sortableElement = this.$();
-    let pageY = ev.originalEvent ? ev.originalEvent.pageY : ev.pageY;
-    let top = sortableElement.offset().top;
-    let height = sortableElement.outerHeight();
-    let isDraggingUp = (pageY - top) < (height / 2);
-    let position = get(this, 'position');
-
-    this.sendAction('dragover', sortableElement, isDraggingUp, position, ev);
-
-      // console.log('mouseover -------------------->>>>>>>', ev.target);
-  },
-
-  dragStart(ev) {
-    this._preventDefaultBehavior(ev);
   }
 });

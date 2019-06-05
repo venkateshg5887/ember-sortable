@@ -1,11 +1,12 @@
 import Component from '@ember/component';
 import layout from './template';
 import { inject } from '@ember/service';
-import { isEqual } from '@ember/utils';
-import { get, set, setProperties, computed } from '@ember/object';
+import { isEqual, isEmpty } from '@ember/utils';
+import { get, setProperties, computed } from '@ember/object';
 import { reads, not } from '@ember/object/computed';
 import { A } from '@ember/array';
 import { bind } from '@ember/runloop';
+import { assert } from '@ember/debug';
 
 let convertToArray = (collection) => {
   if (collection.toArray) {
@@ -30,7 +31,7 @@ export default Component.extend({
   currentOverIndex: reads('sortManager.currentOverIndex'),
   isNotConnected: not('isConnected'),
   scrollContainer: '.sortable-pane',
-  scrollSpeed: 20,
+  scrollSpeed: 10,
 
   isConnected: computed('sortManager.sourceGroup', 'group', function() {
     let currentGroup = get(this, 'group');
@@ -41,32 +42,35 @@ export default Component.extend({
   isActiveSortPane: computed('sortManager.activeSortPane', function() {
     return isEqual(this, get(this, 'sortManager.activeSortPane'));
   }),
-  collection: computed(function() {
+  collection: computed('items.[]', function() {
     return convertToArray(get(this, 'items'));
   }),
 
   init() {
     this._super(...arguments);
 
-    this._onMouseenter = bind(this, this._onMouseenter);
+    assert('tagName should not be empty', isEmpty(get(this, 'tagName')));
+
+    this._onDragenter = bind(this, this._onDragenter);
   },
 
   didInsertElement() {
     this._super(...arguments);
 
     // Registering Events
-    this.$().bind('dragEnter.sortpane', this._onMouseenter);
+    this.$().bind('dragEnter.sortpane', this._onDragenter);
   },
 
   willDestroyElement() {
     this._super(...arguments);
 
+    // Teardown Events
     this.$().unbind('dragEnter.sortpane');
   },
 
-  _onMouseenter(ev) {
-    if (get(this, 'isNotConnected')) {
-      return true;
+  _onDragenter() {
+    if (get(this, 'isNotConnected') || isEqual(this, get(this, 'activeSortPane'))) {
+      return;
     }
 
     let sortManager = get(this, 'sortManager');
@@ -75,13 +79,8 @@ export default Component.extend({
 
     setProperties(sortManager, {
       activeSortPane,
-      'targetList.content': targetList
+      targetList
     });
-  },
-  dragLeave(ev) {
-    if (get(this, 'isNotConnected')) {
-      return true;
-    }
   },
 
   _resetSortManager() {
@@ -95,6 +94,11 @@ export default Component.extend({
     });
   },
 
+  applyChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex) {
+    sourceList.removeAt(sourceIndex);
+    targetList.insertAt(targetIndex, draggedItem);
+  },
+
   actions: {
     onDragStart(item, sourceIndex) {
       let sortManager = get(this, 'sortManager');
@@ -102,8 +106,8 @@ export default Component.extend({
       let activeSortPane = this;
 
       setProperties(sortManager, {
-        'sourceList.content': collection,
-        'targetList.content': collection,
+        'sourceList': collection,
+        'targetList': collection,
         'isDragging': true,
         'sourceGroup': get(this, 'group'),
         'draggedItem': item,
@@ -114,7 +118,7 @@ export default Component.extend({
 
       this.sendAction('onDragStart');
     },
-    updateDragState($element, overOnTopHalf, currentOverIndex, ev) {
+    updateDragState($element, overOnTopHalf, currentOverIndex) {
       // Need to bring in the sort-item calculation logic here
       let sortManager = get(this, 'sortManager');
       let sourceIndex = get(this, 'sourceIndex');
@@ -128,18 +132,20 @@ export default Component.extend({
         sourceIndex
       });
     },
-    updateList(targetIndex, ev) {
+    updateList(ev) {
       let targetList = get(this, 'targetList');
+      let targetIndex = get(this, 'targetIndex');
       let sourceList = get(this, 'sourceList');
       let sourceIndex = get(this, 'sourceIndex');
       let draggedItem = get(this, 'draggedItem');
 
-      sourceList.removeAt(sourceIndex);
-      targetList.insertAt(targetIndex, draggedItem);
+      if (!(isEqual(sourceList, targetList) && isEqual(sourceIndex, targetIndex))) {
+        this.applyChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
+
+        this.sendAction('onDragEnd', draggedItem, sourceList, sourceIndex, targetList, targetIndex, this.applyChanges, ev);
+      }
 
       this._resetSortManager();
-
-      this.sendAction('onDragEnd', ev, draggedItem, sourceList, targetList, targetIndex);
     }
   }
 });
