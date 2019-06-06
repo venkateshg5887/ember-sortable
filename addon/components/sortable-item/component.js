@@ -157,6 +157,8 @@ export default Component.extend({
       let cloneNode = get(this, 'cloneNode');
       let sortableElementContainer = get(this, 'sortableElementContainer');
       let draggedElement = $(cloneNode);
+      let sortManager = get(this, 'sortManager');
+      let currentSortPane = get(sortManager, 'sortPaneElement');
 
       sortableElement.style.display = 'none';
       cloneNode.style.left = `${ev.clientX - sortableElementContainer.shiftX}px`;
@@ -184,7 +186,20 @@ export default Component.extend({
       // This should not be css class dependent
       // should be an attribute and it should be readOnly
       if (sortPane.length) {
-        sortPane.trigger('dragEnter.sortpane');
+
+        if (isEqual(currentSortPane, sortPane.get(0)) && !get(this, 'isDragEntered')) {
+          console.log(`Drag Entered`);
+          sortPane.trigger('dragEnter.sortpane');
+          set(this, 'isDragEntered', true);
+        }
+
+        set(sortManager, 'sortPaneElement', sortPane.get(0));
+
+      } else if (currentSortPane && get(this, 'isDragEntered')) {
+
+        $(currentSortPane).trigger('dragLeave.sortpane');
+        set(this, 'isDragEntered', false);
+
       }
 
       scrollPane = scrollPane.length ? scrollPane : sortPane;

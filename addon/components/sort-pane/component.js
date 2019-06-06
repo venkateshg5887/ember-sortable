@@ -52,6 +52,7 @@ export default Component.extend({
     assert('tagName should not be empty', isEmpty(get(this, 'tagName')));
 
     this._onDragenter = bind(this, this._onDragenter);
+    this._onDragleave = bind(this, this._onDragleave);
   },
 
   didInsertElement() {
@@ -59,6 +60,7 @@ export default Component.extend({
 
     // Registering Events
     this.$().bind('dragEnter.sortpane', this._onDragenter);
+    this.$().bind('dragLeave.sortpane', this._onDragleave);
   },
 
   willDestroyElement() {
@@ -66,6 +68,7 @@ export default Component.extend({
 
     // Teardown Events
     this.$().unbind('dragEnter.sortpane');
+    this.$().unbind('dragLeave.sortpane')
   },
 
   _onDragenter() {
@@ -76,11 +79,19 @@ export default Component.extend({
     let sortManager = get(this, 'sortManager');
     let targetList = get(this, 'collection');
     let activeSortPane = this;
+    let targetIndex = 0;
 
     setProperties(sortManager, {
       activeSortPane,
-      targetList
+      targetList,
+      targetIndex
     });
+
+    this.sendAction('onDragenter');
+  },
+
+  _onDragleave() {
+    this.sendAction('onDragleave');
   },
 
   _resetSortManager() {
@@ -90,7 +101,8 @@ export default Component.extend({
       isDragging: false,
       targetIndex: null,
       draggedItem: null,
-      currentOverIndex: null
+      currentOverIndex: null,
+      sortPane: null
     });
   },
 
@@ -111,7 +123,7 @@ export default Component.extend({
         'isDragging': true,
         'sourceGroup': get(this, 'group'),
         'draggedItem': item,
-        'targetIndex': sourceIndex,
+        'targetIndex': 0,
         sourceIndex,
         activeSortPane
       });
