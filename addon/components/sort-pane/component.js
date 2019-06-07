@@ -123,7 +123,7 @@ export default Component.extend({
         'isDragging': true,
         'sourceGroup': get(this, 'group'),
         'draggedItem': item,
-        'targetIndex': 0,
+        'targetIndex': sourceIndex,
         sourceIndex,
         activeSortPane
       });

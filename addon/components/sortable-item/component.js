@@ -188,7 +188,6 @@ export default Component.extend({
       if (sortPane.length) {
 
         if (isEqual(currentSortPane, sortPane.get(0)) && !get(this, 'isDragEntered')) {
-          console.log(`Drag Entered`);
           sortPane.trigger('dragEnter.sortpane');
           set(this, 'isDragEntered', true);
         }
