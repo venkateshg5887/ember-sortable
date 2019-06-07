@@ -43,7 +43,8 @@ export default Component.extend({
     return isEqual(this, get(this, 'sortManager.activeSortPane'));
   }),
   collection: computed('items.[]', function() {
-    return convertToArray(get(this, 'items'));
+    // return convertToArray(get(this, 'items'));
+    return get(this, 'items');
   }),
 
   init() {
