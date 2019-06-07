@@ -26,6 +26,7 @@ export default Component.extend({
   mousedownTime: null,
   mouseupTime: null,
   delay: 500,
+  isDragEntered: false,
 
   init() {
     this._super(...arguments);
@@ -165,9 +166,10 @@ export default Component.extend({
       cloneNode.style.top = `${ev.clientY - sortableElementContainer.shiftY}px`;
 
       cloneNode.style.display = 'none';
-      let sortabble = $(document.elementFromPoint(ev.clientX, ev.clientY)).closest('.draggable'); // Check for not pane element (collide happens when nested sortable initialized)
-      let sortPane = $(document.elementFromPoint(ev.clientX, ev.clientY)).closest('.sortable-pane');
-      let scrollPane = $(document.elementFromPoint(ev.clientX, ev.clientY)).closest(get(this, 'scrollContainer'));
+      let elementFromPoint = document.elementFromPoint(ev.clientX, ev.clientY);
+      let sortabble = $(elementFromPoint).closest('.draggable'); // Check for not pane element (collide happens when nested sortable initialized)
+      let sortPane = $(elementFromPoint).closest('.sortable-pane');
+      let scrollPane = $(elementFromPoint).closest(get(this, 'scrollContainer'));
       cloneNode.style.display = 'block';
 
       // let newMouseEvent = new MouseEvent("mousemove", {
@@ -188,16 +190,18 @@ export default Component.extend({
       if (sortPane.length) {
 
         if (isEqual(currentSortPane, sortPane.get(0)) && !get(this, 'isDragEntered')) {
+
           sortPane.trigger('dragEnter.sortpane');
           set(this, 'isDragEntered', true);
+
+        } else if (!isEqual(currentSortPane, sortPane.get(0)) && get(this, 'isDragEntered')) {
+
+          $(currentSortPane).trigger('dragLeave.sortpane');
+          set(this, 'isDragEntered', false);
+
         }
 
         set(sortManager, 'sortPaneElement', sortPane.get(0));
-
-      } else if (currentSortPane && get(this, 'isDragEntered')) {
-
-        $(currentSortPane).trigger('dragLeave.sortpane');
-        set(this, 'isDragEntered', false);
 
       }
 
