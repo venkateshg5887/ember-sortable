@@ -80,12 +80,17 @@ export default Component.extend({
     let sortManager = get(this, 'sortManager');
     let targetList = get(this, 'collection');
     let activeSortPane = this;
-    let targetIndex = 0;
+    let targetIndex = get(targetList, 'length');
+    // This should be configurable 'top' or 'bottom'
+    let currentOverIndex = get(targetList, 'length') - 1;
+    let overOnTopHalf = false;
 
     setProperties(sortManager, {
       activeSortPane,
       targetList,
-      targetIndex
+      targetIndex,
+      currentOverIndex,
+      overOnTopHalf
     });
 
     this.sendAction('onDragenter');
@@ -135,7 +140,9 @@ export default Component.extend({
       // Need to bring in the sort-item calculation logic here
       let sortManager = get(this, 'sortManager');
       let sourceIndex = get(this, 'sourceIndex');
-      let sortAdjuster = currentOverIndex > sourceIndex ? 1 : 0;
+      let sourceList = get(this, 'sourceList');
+      let targetList = get(this, 'targetList');
+      let sortAdjuster = (isEqual(sourceList, targetList) && currentOverIndex > sourceIndex) ? 1 : 0;
       let targetIndex = (overOnTopHalf ? currentOverIndex : (currentOverIndex + 1)) - sortAdjuster;
 
       setProperties(sortManager, {
