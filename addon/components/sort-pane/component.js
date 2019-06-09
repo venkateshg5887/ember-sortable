@@ -73,17 +73,25 @@ export default Component.extend({
   },
 
   _onDragenter() {
-    if (get(this, 'isNotConnected') || isEqual(this, get(this, 'activeSortPane'))) {
+    if (get(this, 'isNotConnected') || get(this, 'isActiveSortPane')) {
       return;
     }
 
     let sortManager = get(this, 'sortManager');
     let targetList = get(this, 'collection');
+    let sourceList = get(sortManager, 'sourceList');
     let activeSortPane = this;
+    let isSamePane = isEqual(sourceList, targetList);
     let targetIndex = get(targetList, 'length');
-    // This should be configurable 'top' or 'bottom'
-    let currentOverIndex = get(targetList, 'length') - 1;
+    let currentOverIndex = targetIndex - 1;
+    // For now this will show placeholder @ the bottom of the list
+    // when we Enter the sort-pane's empty places
     let overOnTopHalf = false;
+
+    if (isSamePane) {
+      targetIndex = targetIndex - 1;
+      currentOverIndex = currentOverIndex - 1;
+    }
 
     setProperties(sortManager, {
       activeSortPane,
