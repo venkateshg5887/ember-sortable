@@ -4,17 +4,17 @@ import { inject } from '@ember/service';
 import { isEqual, isEmpty } from '@ember/utils';
 import { get, setProperties, computed } from '@ember/object';
 import { reads, not } from '@ember/object/computed';
-import { A } from '@ember/array';
+// import { A } from '@ember/array';
 import { bind } from '@ember/runloop';
 import { assert } from '@ember/debug';
 
-let convertToArray = (collection) => {
-  if (collection.toArray) {
-    return collection.toArray();
-  }
+// let convertToArray = (collection) => {
+//   if (collection.toArray) {
+//     return collection.toArray();
+//   }
 
-  return A(collection);
-};
+//   return A(collection);
+// };
 
 export default Component.extend({
   layout,

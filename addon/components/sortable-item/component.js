@@ -1,6 +1,6 @@
 import Component from '@ember/component';
 import layout from './template';
-import { bind } from '@ember/runloop';
+import { bind, debounce, cancel } from '@ember/runloop';
 import { get, set, setProperties } from '@ember/object';
 import $ from 'jquery';
 import { inject } from '@ember/service';
@@ -25,7 +25,6 @@ export default Component.extend({
   cloneNode: null,
   mousedownTime: null,
   mouseupTime: null,
-  delay: 500,
   isDragEntered: false,
 
   init() {
@@ -38,13 +37,14 @@ export default Component.extend({
     this._onDragend = bind(this, this._onDragend);
     this._onDragover = bind(this, this._onDragover);
     this._preventDefaultBehavior = bind(this, this._preventDefaultBehavior);
+    this._startDrag = bind(this, this._startDrag);
   },
 
   didInsertElement() {
     this._super(...arguments);
 
     // Registering Events
-    this.get('element').addEventListener('mousedown', this._onDragstart);
+    this.get('element').addEventListener('mousedown', this._startDrag);
     // this.get('element').addEventListener('mousemove', this._onDragover);
     this.$().bind('mousemove.sortabble', this._onDragover);
     // this.get('element').addEventListener('mouseover', this._onMouseover);
@@ -72,6 +72,18 @@ export default Component.extend({
   },
 
   _onDragstart(ev) {
+    this._preventDefaultBehavior(ev);
+
+    let dragEvent = debounce(this, this._startDrag, ev, 50);
+    let cancelDragEvent = () => {
+      cancel(dragEvent);
+      document.removeEventListener('mouseup', cancelDragEvent);
+    };
+
+    document.addEventListener('mouseup', cancelDragEvent);
+  },
+
+  _startDrag(ev) {
     if (get(this, 'disabled')) {
       return;
     }
@@ -217,7 +229,7 @@ export default Component.extend({
     set(this, 'mouseupTime', moment(new Date(), 'ss'));
 
     if (get(this, 'isDragging')) {
-      this._preventDefaultBehavior(ev);
+      // this._preventDefaultBehavior(ev);
       this._tearDownEvents();
 
       let sortableElement = get(this, 'element');
@@ -230,11 +242,6 @@ export default Component.extend({
 
       set(this, 'cloneNode', null);
       get(this, 'currentSortPane').send('updateList', get(this, 'targetIndex'), ev);
-    }
-
-    if (get(this, 'mouseupTime').diff(get(this, 'mousedownTime')) < get(this, 'delay')) {
-      let targetElement = get(this, 'targetElement');
-      $(targetElement).trigger('click');
     }
   },
 
