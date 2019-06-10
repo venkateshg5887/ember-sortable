@@ -44,7 +44,7 @@ export default Component.extend({
     this._super(...arguments);
 
     // Registering Events
-    this.get('element').addEventListener('mousedown', this._startDrag);
+    this.get('element').addEventListener('mousedown', this._onDragstart);
     // this.get('element').addEventListener('mousemove', this._onDragover);
     this.$().bind('mousemove.sortabble', this._onDragover);
     // this.get('element').addEventListener('mouseover', this._onMouseover);
