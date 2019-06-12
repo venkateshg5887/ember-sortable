@@ -14,6 +14,7 @@ const CONTAINERSIDES = ['Left', 'Right', 'Top', 'Bottom'];
 const dragActions = ['mousemove', 'touchmove'];
 const elementClickAction = 'click';
 const endActions = ['click', 'mouseup', 'touchend'];
+const CONTEXTMENUKEYCODE = 3;
 
 export default Component.extend({
   layout,
@@ -78,6 +79,9 @@ export default Component.extend({
   },
 
   _eventManager(ev) {
+    if (isEqual(ev.which, CONTEXTMENUKEYCODE)) {
+      return;
+    }
     // let handle = this.get('handle');
 
     // if (handle && !ev.target.closest(handle)) {
