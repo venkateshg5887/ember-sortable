@@ -11,6 +11,9 @@ import { assert } from '@ember/debug';
 import moment from 'moment';
 
 const CONTAINERSIDES = ['Left', 'Right', 'Top', 'Bottom'];
+const dragActions = ['mousemove', 'touchmove'];
+const elementClickAction = 'click';
+const endActions = ['click', 'mouseup', 'touchend'];
 
 export default Component.extend({
   layout,
@@ -37,25 +40,23 @@ export default Component.extend({
     this._onDragend = bind(this, this._onDragend);
     this._onDragover = bind(this, this._onDragover);
     this._preventDefaultBehavior = bind(this, this._preventDefaultBehavior);
-    this._startDrag = bind(this, this._startDrag);
+    this._eventManager = bind(this, this._eventManager);
   },
 
   didInsertElement() {
     this._super(...arguments);
 
     // Registering Events
-    this.get('element').addEventListener('mousedown', this._onDragstart);
+    this.get('element').addEventListener('mousedown', this._eventManager);
     // this.get('element').addEventListener('mousemove', this._onDragover);
     this.$().bind('mousemove.sortabble', this._onDragover);
     // this.get('element').addEventListener('mouseover', this._onMouseover);
-    // This should be a conditional option to prevent click {default: true}
-    // this.get('element').addEventListener('click', this._preventDefaultBehavior);
   },
 
   willDestroyElement() {
     this._super(...arguments);
 
-    this.get('element').removeEventListener('mousedown', this._onDragstart);
+    this.get('element').removeEventListener('mousedown', this._eventManager);
     // This should replace with javascript event dispatch
     this.$().unbind('mousemove.sortabble');
   },
@@ -66,28 +67,51 @@ export default Component.extend({
     ev.stopImmediatePropagation();
   },
 
-  _tearDownEvents() {
-    document.removeEventListener('mousemove', this._onDrag);
-    document.removeEventListener('mouseup', this._onDragend);
+  _registerDragEvents() {
+    window.addEventListener('mousemove', this._onDrag);
+    window.addEventListener('mouseup', this._onDragend);
+  },
+
+  _tearDownDragEvents() {
+    window.removeEventListener('mousemove', this._onDrag);
+    window.removeEventListener('mouseup', this._onDragend);
+  },
+
+  _eventManager(ev) {
+    // let handle = this.get('handle');
+
+    // if (handle && !ev.target.closest(handle)) {
+    //   return;
+    // }
+
+    this._preventDefaultBehavior(ev);
+
+    dragActions.forEach(event => window.addEventListener(event, this._onDragstart));
+
+    const selfCancellingCallback = () => {
+      endActions.forEach(event => window.removeEventListener(event, selfCancellingCallback));
+      dragActions.forEach(event => window.removeEventListener(event, this._onDragstart));
+    };
+
+    endActions.forEach(event => window.addEventListener(event, selfCancellingCallback));
   },
 
   _onDragstart(ev) {
-    this._preventDefaultBehavior(ev);
+    // this._preventDefaultBehavior(ev);
 
-    let dragEvent = debounce(this, this._startDrag, ev, 50);
-    let cancelDragEvent = () => {
-      cancel(dragEvent);
-      document.removeEventListener('mouseup', cancelDragEvent);
+    let element = get(this, 'element');
+
+    let dragInit = (ev) => {
+      dragActions.forEach(event => window.removeEventListener(event, this._onDragstart));
+      this._cloneDraggable(ev);
+      this._registerDragEvents();
+      element.removeEventListener('mousemove', dragInit);
     };
 
-    document.addEventListener('mouseup', cancelDragEvent);
+    element.addEventListener('mousemove', dragInit);
   },
 
-  _startDrag(ev) {
-    if (get(this, 'disabled')) {
-      return;
-    }
-
+  _cloneDraggable(ev) {
     this._preventDefaultBehavior(ev);
 
     setProperties(this, {
@@ -156,8 +180,8 @@ export default Component.extend({
       sortableElementContainer
     });
 
-    document.addEventListener('mousemove', this._onDrag);
-    document.addEventListener('mouseup', this._onDragend);
+    // document.addEventListener('mousemove', this._onDrag);
+    // document.addEventListener('mouseup', this._onDragend);
 
     this.sendAction('dragstart', ev);
   },
@@ -226,11 +250,9 @@ export default Component.extend({
   },
 
   _onDragend(ev) {
-    set(this, 'mouseupTime', moment(new Date(), 'ss'));
-
     if (get(this, 'isDragging')) {
       // this._preventDefaultBehavior(ev);
-      this._tearDownEvents();
+      this._tearDownDragEvents();
 
       let sortableElement = get(this, 'element');
       let documentBody = document.getElementsByTagName('body')[0];
