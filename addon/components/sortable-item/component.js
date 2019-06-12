@@ -1,6 +1,6 @@
 import Component from '@ember/component';
 import layout from './template';
-import { bind, debounce, cancel } from '@ember/runloop';
+import { bind } from '@ember/runloop';
 import { get, set, setProperties } from '@ember/object';
 import $ from 'jquery';
 import { inject } from '@ember/service';
@@ -8,13 +8,11 @@ import { assign } from '@ember/polyfills';
 import { isEqual, isEmpty } from '@ember/utils';
 import { reads } from '@ember/object/computed';
 import { assert } from '@ember/debug';
-import moment from 'moment';
 
 const CONTAINERSIDES = ['Left', 'Right', 'Top', 'Bottom'];
-const dragActions = ['mousemove', 'touchmove'];
-const elementClickAction = 'click';
-const endActions = ['click', 'mouseup', 'touchend'];
-const CONTEXTMENUKEYCODE = 3;
+const DRAGACTIONS = ['mousemove', 'touchmove'];
+const DROPACTIONS = ['mouseup', 'touchend'];
+// const CONTEXTMENUKEYCODE = 3;
 
 export default Component.extend({
   layout,
@@ -27,8 +25,6 @@ export default Component.extend({
   sourceIndex: reads('sortManager.sourceIndex'),
   targetIndex: reads('sortManager.targetIndex'),
   cloneNode: null,
-  mousedownTime: null,
-  mouseupTime: null,
   isDragEntered: false,
 
   init() {
@@ -36,30 +32,35 @@ export default Component.extend({
 
     assert('tagName should not be empty', isEmpty(get(this, 'tagName')));
 
-    this._onDragstart = bind(this, this._onDragstart);
+    this._dragEventsManager = bind(this, this._dragEventsManager);
     this._onDrag = bind(this, this._onDrag);
-    this._onDragend = bind(this, this._onDragend);
     this._onDragover = bind(this, this._onDragover);
     this._preventDefaultBehavior = bind(this, this._preventDefaultBehavior);
-    this._eventManager = bind(this, this._eventManager);
+    this._onMouseDown = bind(this, this._onMouseDown);
+    this._tearDownDragEvents = bind(this, this._tearDownDragEvents);
+    this._detachDragEventManager = bind(this, this._detachDragEventManager);
   },
 
   didInsertElement() {
     this._super(...arguments);
 
-    // Registering Events
-    this.get('element').addEventListener('mousedown', this._eventManager);
-    // this.get('element').addEventListener('mousemove', this._onDragover);
+    let element = get(this, 'element')
+
+    element.style['touch-action'] = 'none';
+
+    element.addEventListener('mousedown', this._onMouseDown);
+
     this.$().bind('mousemove.sortabble', this._onDragover);
-    // this.get('element').addEventListener('mouseover', this._onMouseover);
   },
 
   willDestroyElement() {
     this._super(...arguments);
 
-    this.get('element').removeEventListener('mousedown', this._eventManager);
+    get(this, 'element').removeEventListener('mousedown', this._onMouseDown);
     // This should replace with javascript event dispatch
     this.$().unbind('mousemove.sortabble');
+
+    this._detachDragEventManager();
   },
 
   _preventDefaultBehavior(ev) {
@@ -68,63 +69,48 @@ export default Component.extend({
     ev.stopImmediatePropagation();
   },
 
-  _registerDragEvents() {
-    window.addEventListener('mousemove', this._onDrag);
-    window.addEventListener('mouseup', this._onDragend);
-  },
-
-  _tearDownDragEvents() {
-    window.removeEventListener('mousemove', this._onDrag);
-    window.removeEventListener('mouseup', this._onDragend);
-  },
-
-  _eventManager(ev) {
-    if (isEqual(ev.which, CONTEXTMENUKEYCODE)) {
-      return;
-    }
-    // let handle = this.get('handle');
+  _onMouseDown() {
+    // if (isEqual(ev.which, CONTEXTMENUKEYCODE)) {
+    //   return;
+    // }
+    // let handle = get(this, 'handle');
 
     // if (handle && !ev.target.closest(handle)) {
     //   return;
     // }
 
-    this._preventDefaultBehavior(ev);
-
-    dragActions.forEach(event => window.addEventListener(event, this._onDragstart));
-
-    const selfCancellingCallback = () => {
-      endActions.forEach(event => window.removeEventListener(event, selfCancellingCallback));
-      dragActions.forEach(event => window.removeEventListener(event, this._onDragstart));
-    };
-
-    endActions.forEach(event => window.addEventListener(event, selfCancellingCallback));
-  },
-
-  _onDragstart(ev) {
     // this._preventDefaultBehavior(ev);
 
-    let element = get(this, 'element');
+    DRAGACTIONS.forEach(event => window.addEventListener(event, this._dragEventsManager));
+    DROPACTIONS.forEach(event => window.addEventListener(event, this._detachDragEventManager));
+  },
 
-    let dragInit = (ev) => {
-      dragActions.forEach(event => window.removeEventListener(event, this._onDragstart));
-      this._cloneDraggable(ev);
-      this._registerDragEvents();
-      element.removeEventListener('mousemove', dragInit);
-    };
+  _dragEventsManager(ev) {
+    // this._preventDefaultBehavior(ev);
+    this._detachDragEventManager();
 
-    element.addEventListener('mousemove', dragInit);
+    this._cloneDraggable(ev);
+
+    this.sendAction('dragstart', ev);
+
+    DRAGACTIONS.forEach(event => window.addEventListener(event, this._onDrag));
+    DROPACTIONS.forEach(event => window.addEventListener(event, this._tearDownDragEvents));
+  },
+
+  _detachDragEventManager() {
+    DRAGACTIONS.forEach(event => window.removeEventListener(event, this._dragEventsManager));
+    DROPACTIONS.forEach(event => window.removeEventListener(event, this._detachDragEventManager));
+  },
+
+  _tearDownDragEvents() {
+    DRAGACTIONS.forEach(event => window.removeEventListener(event, this._onDrag));
+    DROPACTIONS.forEach(event => window.removeEventListener(event, this._tearDownDragEvents));
+
+    this._onDrop();
   },
 
   _cloneDraggable(ev) {
-    this._preventDefaultBehavior(ev);
-
-    setProperties(this, {
-      mousedownTime: moment(new Date(), 'ss'),
-      targetElement: ev.target,
-      isDragging: true
-    });
-
-    let sortableElement = this.get('element');
+    let sortableElement = get(this, 'element');
     let cloneNode = sortableElement.cloneNode(true);
     let sortableElementStyle = sortableElement.currentStyle || window.getComputedStyle(sortableElement);
     let properties = ['margin', 'padding', 'border'];
@@ -184,95 +170,84 @@ export default Component.extend({
       sortableElementContainer
     });
 
-    // document.addEventListener('mousemove', this._onDrag);
-    // document.addEventListener('mouseup', this._onDragend);
-
-    this.sendAction('dragstart', ev);
   },
 
   _onDrag(ev) {
-    // this._preventDefaultBehavior(ev);
+    this._preventDefaultBehavior(ev);
 
-    if (get(this, 'isDragging')) {
-      let sortableElement = get(this, 'element');
-      let cloneNode = get(this, 'cloneNode');
-      let sortableElementContainer = get(this, 'sortableElementContainer');
-      let draggedElement = $(cloneNode);
-      let sortManager = get(this, 'sortManager');
-      let currentSortPane = get(sortManager, 'sortPaneElement');
+    let sortableElement = get(this, 'element');
+    let cloneNode = get(this, 'cloneNode');
+    let sortableElementContainer = get(this, 'sortableElementContainer');
+    let draggedElement = $(cloneNode);
+    let sortManager = get(this, 'sortManager');
+    let currentSortPane = get(sortManager, 'sortPaneElement');
 
-      sortableElement.style.display = 'none';
-      cloneNode.style.left = `${ev.clientX - sortableElementContainer.shiftX}px`;
-      cloneNode.style.top = `${ev.clientY - sortableElementContainer.shiftY}px`;
+    sortableElement.style.display = 'none';
+    cloneNode.style.left = `${ev.clientX - sortableElementContainer.shiftX}px`;
+    cloneNode.style.top = `${ev.clientY - sortableElementContainer.shiftY}px`;
 
-      cloneNode.style.display = 'none';
-      let elementFromPoint = document.elementFromPoint(ev.clientX, ev.clientY);
-      let sortabble = $(elementFromPoint).closest('.draggable'); // Check for not pane element (collide happens when nested sortable initialized)
-      let sortPane = $(elementFromPoint).closest('.sortable-pane');
-      let scrollPane = $(elementFromPoint).closest(get(this, 'scrollContainer'));
-      cloneNode.style.display = 'block';
+    cloneNode.hidden = true;
+    let elementFromPoint = document.elementFromPoint(ev.clientX, ev.clientY);
+    let sortabble = $(elementFromPoint).closest('.draggable'); // Check for not pane element (collide happens when nested sortable initialized)
+    let sortPane = $(elementFromPoint).closest('.sortable-pane');
+    let scrollPane = $(elementFromPoint).closest(get(this, 'scrollContainer'));
+    cloneNode.hidden = false;
 
-      // let newMouseEvent = new MouseEvent("mousemove", {
-      //   bubbles: true,
-      //   cancelable: true,
-      //   view: window
-      // });
+    // let newMouseEvent = new MouseEvent("mousemove", {
+    //   bubbles: true,
+    //   cancelable: true,
+    //   view: window
+    // });
 
-      // This should not be css class dependent
-      // should be an attribute and readOnly
-      if (sortabble.length) {
-        let newMouseEvent = $.Event('mousemove.sortabble', ev);
-        sortabble.trigger(newMouseEvent);
-      }
+    // This should not be css class dependent
+    // should be an attribute and readOnly
+    if (sortabble.length) {
+      let newMouseEvent = $.Event('mousemove.sortabble', ev);
+      sortabble.trigger(newMouseEvent);
+    }
 
-      // This should not be css class dependent
-      // should be an attribute and it should be readOnly
-      if (sortPane.length) {
+    // This should not be css class dependent
+    // should be an attribute and it should be readOnly
+    if (sortPane.length) {
 
-        if (isEqual(currentSortPane, sortPane.get(0)) && !get(this, 'isDragEntered')) {
+      if (isEqual(currentSortPane, sortPane.get(0)) && !get(this, 'isDragEntered')) {
 
-          sortPane.trigger('dragEnter.sortpane');
-          set(this, 'isDragEntered', true);
+        sortPane.trigger('dragEnter.sortpane');
+        set(this, 'isDragEntered', true);
 
-        } else if (!isEqual(currentSortPane, sortPane.get(0)) && get(this, 'isDragEntered')) {
+      } else if (!isEqual(currentSortPane, sortPane.get(0)) && get(this, 'isDragEntered')) {
 
-          $(currentSortPane).trigger('dragLeave.sortpane');
-          set(this, 'isDragEntered', false);
-
-        }
-
-        set(sortManager, 'sortPaneElement', sortPane.get(0));
+        $(currentSortPane).trigger('dragLeave.sortpane');
+        set(this, 'isDragEntered', false);
 
       }
 
-      scrollPane = scrollPane.length ? scrollPane : sortPane;
+      set(sortManager, 'sortPaneElement', sortPane.get(0));
 
-      if (draggedElement.length && scrollPane.length && this._hasScroll(scrollPane.get(0))) {
-        this._handleScroll(scrollPane, draggedElement);
-      }
+    }
+
+    scrollPane = scrollPane.length ? scrollPane : sortPane;
+
+    if (draggedElement.length && scrollPane.length && this._hasScroll(scrollPane.get(0))) {
+      this._handleScroll(scrollPane, draggedElement);
     }
   },
 
-  _onDragend(ev) {
-    if (get(this, 'isDragging')) {
-      // this._preventDefaultBehavior(ev);
-      this._tearDownDragEvents();
+  _onDrop() {
+    let sortableElement = get(this, 'element');
+    let documentBody = document.getElementsByTagName('body')[0];
 
-      let sortableElement = get(this, 'element');
-      let documentBody = document.getElementsByTagName('body')[0];
+    documentBody.removeChild(get(this, 'cloneNode'));
+    sortableElement.removeAttribute('style');
 
-      set(this, 'isDragging', false);
+    set(this, 'cloneNode', null);
 
-      documentBody.removeChild(get(this, 'cloneNode'));
-      sortableElement.removeAttribute('style');
-
-      set(this, 'cloneNode', null);
-      get(this, 'currentSortPane').send('updateList', get(this, 'targetIndex'), ev);
-    }
+    get(this, 'currentSortPane').send('updateList', get(this, 'targetIndex'));
   },
 
   _onDragover(ev) {
     if (get(this, 'sortManager.isDragging')) {
+
       let sortableElement = this.$();
       let pageY = ev.originalEvent ? ev.originalEvent.pageY : ev.pageY;
       let top = sortableElement.offset().top;

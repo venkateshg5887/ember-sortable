@@ -19,5 +19,7 @@
     {{sort-placeholder}}
   {{/if}}
 {{else}}
-  {{!-- {{sort-placeholder}} --}}
+  {{#if isActiveSortPane}}
+    {{sort-placeholder}}
+  {{/if}}
 {{/each}}
