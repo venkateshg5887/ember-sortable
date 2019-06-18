@@ -1,7 +1,7 @@
 import Component from '@ember/component';
 import layout from './template';
 import { bind } from '@ember/runloop';
-import { get, set, setProperties } from '@ember/object';
+import { get, set, setProperties, computed } from '@ember/object';
 import $ from 'jquery';
 import { inject } from '@ember/service';
 import { assign } from '@ember/polyfills';
@@ -12,6 +12,7 @@ import { assert } from '@ember/debug';
 const CONTAINERSIDES = ['Left', 'Right', 'Top', 'Bottom'];
 const DRAGACTIONS = ['mousemove', 'touchmove'];
 const DROPACTIONS = ['mouseup', 'touchend'];
+const MAXSCROLLPRESSURE = 100;
 // const CONTEXTMENUKEYCODE = 3;
 
 export default Component.extend({
@@ -21,7 +22,9 @@ export default Component.extend({
   isDisabled: false,
   sortManager: inject(),
   currentSortPane: reads('sortManager.activeSortPane'),
-  scrollPane: reads('sortManager.activeSortPane'),
+  scrollPane: computed('scrollContainer', function() {
+    return this.$().closest(get(this, 'scrollContainer'));
+  }),
   sourceIndex: reads('sortManager.sourceIndex'),
   targetIndex: reads('sortManager.targetIndex'),
   cloneNode: null,
@@ -39,6 +42,7 @@ export default Component.extend({
     this._onMouseDown = bind(this, this._onMouseDown);
     this._tearDownDragEvents = bind(this, this._tearDownDragEvents);
     this._detachDragEventManager = bind(this, this._detachDragEventManager);
+    this._handleScroll = bind(this, this._handleScroll);
   },
 
   didInsertElement() {
@@ -175,6 +179,8 @@ export default Component.extend({
   _onDrag(ev) {
     this._preventDefaultBehavior(ev);
 
+    cancelAnimationFrame(this._scrollAnimation);
+
     let sortableElement = get(this, 'element');
     let cloneNode = get(this, 'cloneNode');
     let sortableElementContainer = get(this, 'sortableElementContainer');
@@ -190,7 +196,6 @@ export default Component.extend({
     let elementFromPoint = document.elementFromPoint(ev.clientX, ev.clientY);
     let sortabble = $(elementFromPoint).closest('.draggable'); // Check for not pane element (collide happens when nested sortable initialized)
     let sortPane = $(elementFromPoint).closest('.sortable-pane');
-    let scrollPane = $(elementFromPoint).closest(get(this, 'scrollContainer'));
     cloneNode.hidden = false;
 
     // let newMouseEvent = new MouseEvent("mousemove", {
@@ -226,10 +231,14 @@ export default Component.extend({
 
     }
 
-    scrollPane = scrollPane.length ? scrollPane : sortPane;
+    currentSortPane = get(this, 'currentSortPane');
 
-    if (draggedElement.length && scrollPane.length && this._hasScroll(scrollPane.get(0))) {
-      this._handleScroll(scrollPane, draggedElement);
+    let scrollPane = currentSortPane.$().closest(get(currentSortPane, 'scrollContainer'));
+
+    if (this._hasScroll(scrollPane.get(0))) {
+      this._scrollAnimation = requestAnimationFrame(() => {
+        this._handleScroll(scrollPane, draggedElement);
+      });
     }
   },
 
@@ -271,28 +280,39 @@ export default Component.extend({
     let scrollPaneTop = scrollPane.offset().top;
     let paneScrolledTill = scrollPane.get(0).clientHeight + scrollPane.get(0).scrollTop;
     let paneScrollHeight = scrollPane.prop('scrollHeight');
-    let isDraggingUp = draggedElementTop <= scrollPaneTop;
+    let isDraggingUp = draggedElementTop < scrollPaneTop;
     let isNotReachedUp = scrollPane.scrollTop() > 0;
-    let isDraggingDown = draggedElementBottom >= scrollPaneBottom
-    let isNotReachedDown = paneScrolledTill <= paneScrollHeight;
+    let isDraggingDown = draggedElementBottom > scrollPaneBottom
+    let isNotReachedDown = paneScrolledTill < paneScrollHeight;
     let isTryingToScroll = isDraggingUp || isDraggingDown;
+    let scrollPressure = isDraggingDown ? (draggedElementBottom - scrollPaneBottom) : scrollPaneTop - draggedElementTop;
 
     if (isTryingToScroll) {
       if (isDraggingUp && isNotReachedUp) {
-        this._scrollPane(scrollPane.get(0), true);
+        this._scrollPane(scrollPressure, paneScrolledTill, scrollPane, draggedElement, true);
       }
 
       if (isDraggingDown && isNotReachedDown) {
-        this._scrollPane(scrollPane.get(0));
+        this._scrollPane(scrollPressure, paneScrolledTill, scrollPane, draggedElement);
       }
     }
   },
 
-  _scrollPane(sortPane, isDraggingUp = false) {
+  _scrollPane(scrollPressure, paneScrolledTill, scrollPane, draggedElement, isDraggingUp = false) {
+    let scrollSpeed = get(this, 'scrollSpeed');
+
     if (isDraggingUp) {
-      sortPane.scrollTop -= get(this, 'scrollSpeed');
+      scrollPane.get(0).scrollTop -= Math.floor(scrollSpeed + (Math.min(scrollPressure, MAXSCROLLPRESSURE) / 10) / 2);
     } else {
-      sortPane.scrollTop += get(this, 'scrollSpeed');
+      scrollPane.get(0).scrollTop += Math.floor(scrollSpeed + (Math.min(scrollPressure, MAXSCROLLPRESSURE) / 10) / 2);
     }
+
+    this._scrollAnimation = requestAnimationFrame(() => {
+      draggedElement = $(get(this, 'cloneNode'));
+
+      if (draggedElement.length) {
+        this._handleScroll(scrollPane, draggedElement);
+      }
+    });
   }
 });

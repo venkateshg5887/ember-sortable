@@ -31,7 +31,7 @@ export default Component.extend({
   currentOverIndex: reads('sortManager.currentOverIndex'),
   isNotConnected: not('isConnected'),
   scrollContainer: '.sortable-pane',
-  scrollSpeed: 10,
+  scrollSpeed: 3,
 
   isConnected: computed('sortManager.sourceGroup', 'group', function() {
     let currentGroup = get(this, 'group');
