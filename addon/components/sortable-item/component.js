@@ -73,7 +73,7 @@ export default Component.extend({
     ev.stopImmediatePropagation();
   },
 
-  _onMouseDown() {
+  _onMouseDown(ev) {
     // if (isEqual(ev.which, CONTEXTMENUKEYCODE)) {
     //   return;
     // }
@@ -83,7 +83,7 @@ export default Component.extend({
     //   return;
     // }
 
-    // this._preventDefaultBehavior(ev);
+    this._preventDefaultBehavior(ev);
 
     DRAGACTIONS.forEach(event => window.addEventListener(event, this._dragEventsManager));
     DROPACTIONS.forEach(event => window.addEventListener(event, this._detachDragEventManager));
