@@ -1,14 +1,16 @@
 {{#each collection as |item idx|}}
   {{#if (and isActiveSortPane (eq currentOverIndex idx) overOnTopHalf)}}
-    {{sort-placeholder}}
+    {{sort-placeholder style=placeholderStyles}}
   {{/if}}
 
   {{yield (hash
     item=(component 'sortable-item'
+      isDisabled=isDisabled
       position=idx
       content=item
       items=items
-      scrollContainer=scrollContainer
+      containment=containment
+      scrollPane=scrollPane
       scrollSpeed=scrollSpeed
       dragstart=(action 'onDragStart' item idx)
       dragend=(action 'updateList' targetIndex)
@@ -16,10 +18,10 @@
   )}}
 
   {{#if (and isActiveSortPane (eq currentOverIndex idx) overOnBottomHalf)}}
-    {{sort-placeholder}}
+    {{sort-placeholder style=placeholderStyles}}
   {{/if}}
 {{else}}
   {{#if isActiveSortPane}}
-    {{sort-placeholder}}
+    {{sort-placeholder style=placeholderStyles}}
   {{/if}}
 {{/each}}

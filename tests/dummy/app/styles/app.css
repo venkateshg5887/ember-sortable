@@ -1,9 +1,11 @@
-.draggable {
+.sortable {
   padding: 10px;
   margin: 5px;
   border: 1px solid #000;
   cursor: grab;
   background: #f1f1f1;
+  border-radius: 10px 0;
+  white-space: initial;
 }
 
 .sort-placeholder {
@@ -12,16 +14,28 @@
   background-color: #ccc;
 }
 
-.sortable-pane {
+.kanban-board {
+  width: 1200px;
+  overflow: auto;
+  white-space: nowrap;
+  margin-left: 50px;
+  border: 1px solid #000;
+}
+
+.sort-pane {
   width: 420px;
   height: 200px;
   overflow: scroll;
-  float: left;
   border: 1px solid #666;
   margin-right: 10px;
   padding: 10px;
+  display: inline-block;
 }
 
 .hide {
   display: none;
+}
+
+.scroll-pane {
+  width: 200%;
 }

@@ -2,11 +2,13 @@ import Component from '@ember/component';
 import layout from './template';
 import { inject } from '@ember/service';
 import { isEqual, isEmpty } from '@ember/utils';
-import { get, setProperties, computed } from '@ember/object';
+import { get, set, setProperties, computed } from '@ember/object';
 import { reads, not } from '@ember/object/computed';
 // import { A } from '@ember/array';
 import { bind } from '@ember/runloop';
 import { assert } from '@ember/debug';
+import { htmlSafe } from '@ember/template';
+import { Promise } from 'rsvp';
 
 // let convertToArray = (collection) => {
 //   if (collection.toArray) {
@@ -18,7 +20,9 @@ import { assert } from '@ember/debug';
 
 export default Component.extend({
   layout,
-  classNames: ['sortable-pane'],
+  classNames: ['sort-pane'],
+  attributeBindings: ['sortPane:sort-pane'],
+  sortPane: true,
   sortManager: inject(),
   sourceList: reads('sortManager.sourceList'),
   targetList: reads('sortManager.targetList'),
@@ -30,9 +34,19 @@ export default Component.extend({
   overOnBottomHalf: not('overOnTopHalf'),
   currentOverIndex: reads('sortManager.currentOverIndex'),
   isNotConnected: not('isConnected'),
-  scrollContainer: '.sortable-pane',
   scrollSpeed: 3,
+  scrollPane: '[sort-pane]',
+  containment: null,
+  isDisabled: false,
 
+  placeholderStyles: computed('sortManager.placeholderStyles', function() {
+    let styles = get(this, 'sortManager.placeholderStyles');
+    let concatStyles = Object.keys(styles).map((prop) => {
+      return ` ${prop}: ${styles[prop]}`;
+    });
+
+    return htmlSafe(concatStyles.join(';'));
+  }),
   isConnected: computed('sortManager.sourceGroup', 'group', function() {
     let currentGroup = get(this, 'group');
     let sourceGroup = get(this, 'sortManager.sourceGroup');
@@ -50,7 +64,7 @@ export default Component.extend({
   init() {
     this._super(...arguments);
 
-    assert('tagName should not be empty', isEmpty(get(this, 'tagName')));
+    assert('tagName should not be empty ', isEmpty(get(this, 'tagName')));
 
     this._onDragenter = bind(this, this._onDragenter);
     this._onDragleave = bind(this, this._onDragleave);
@@ -59,17 +73,21 @@ export default Component.extend({
   didInsertElement() {
     this._super(...arguments);
 
+    let element = get(this, 'element');
+
     // Registering Events
-    this.$().bind('dragEnter.sortpane', this._onDragenter);
-    this.$().bind('dragLeave.sortpane', this._onDragleave);
+    element.addEventListener('dragEnter', this._onDragenter);
+    element.addEventListener('dragLeave', this._onDragleave);
   },
 
   willDestroyElement() {
     this._super(...arguments);
 
+    let element = get(this, 'element');
+
     // Teardown Events
-    this.$().unbind('dragEnter.sortpane');
-    this.$().unbind('dragLeave.sortpane')
+    element.removeEventListener('dragEnter', this._onDragenter);
+    element.removeEventListener('dragLeave', this._onDragleave);
   },
 
   _onDragenter() {
@@ -84,8 +102,8 @@ export default Component.extend({
     let isSamePane = isEqual(sourceList, targetList);
     let targetIndex = get(targetList, 'length');
     let currentOverIndex = targetIndex - 1;
-    // For now this will show placeholder @ the bottom of the list
-    // when we Enter the sort-pane's empty places
+    // This will show placeholder at the End of the list
+    // when we Enter the sort-pane's empty space
     let overOnTopHalf = false;
 
     if (isSamePane) {
@@ -125,6 +143,15 @@ export default Component.extend({
     targetList.insertAt(targetIndex, draggedItem);
   },
 
+  resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex) {
+    targetList.removeAt(targetIndex);
+    sourceList.insertAt(sourceIndex, draggedItem);
+  },
+
+  onDrop() {
+    return true;
+  },
+
   actions: {
     onDragStart(item, sourceIndex) {
       let sortManager = get(this, 'sortManager');
@@ -142,7 +169,7 @@ export default Component.extend({
         activeSortPane
       });
 
-      this.sendAction('onDragStart');
+      this.sendAction('onDragStart', item, collection, sourceIndex);
     },
     updateDragState($element, overOnTopHalf, currentOverIndex) {
       // Need to bring in the sort-item calculation logic here
@@ -160,7 +187,7 @@ export default Component.extend({
         sourceIndex
       });
     },
-    updateList(ev) {
+    updateList(draggedElement) {
       let targetList = get(this, 'targetList');
       let targetIndex = get(this, 'targetIndex');
       let sourceList = get(this, 'sourceList');
@@ -168,9 +195,24 @@ export default Component.extend({
       let draggedItem = get(this, 'draggedItem');
 
       if (!(isEqual(sourceList, targetList) && isEqual(sourceIndex, targetIndex))) {
+
         this.applyChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
 
-        this.sendAction('onDragEnd', draggedItem, sourceList, sourceIndex, targetList, targetIndex, this.applyChanges, ev);
+        let dropAction = new Promise((resolve) => {
+          resolve(get(this, 'onDrop')(draggedItem, sourceList, sourceIndex, targetList, targetIndex, draggedElement));
+        });
+
+        set(this, 'dropActionInFlight', true);
+
+        dropAction.then((updateList = true) => {
+          if (updateList === false) {
+            this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
+          }
+        }).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error(err);
+          this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
+        });
       }
 
       this._resetSortManager();

@@ -1,27 +1,43 @@
 <h1>Ember Sortables</h1>
 
-{{#sort-pane
-  group=1
-  items=model.squadA as |sortable|}}
-  {{#sortable.item as |item|}}
-    {{item.content}}
-  {{/sortable.item}}
-{{/sort-pane}}
+<div class="kanban-board">
+  {{#sort-pane
+    group=1
+    containment=".kanban-board"
+    onDrop=(action 'test')
+    items=model.squadA as |sortable|}}
+    {{#sortable.item as |item|}}
+      {{item.content}}
+    {{/sortable.item}}
+  {{/sort-pane}}
 
-{{#sort-pane
-  group=1
-  items=model.squadB as |sortable|}}
-  {{#sortable.item as |item|}}
-    {{item.content}}
-  {{/sortable.item}}
-{{/sort-pane}}
+  {{#sort-pane
+    group=1
+    containment=".kanban-board"
+    items=model.squadB as |sortable|}}
+    {{#sortable.item as |item|}}
+      {{item.content}}
+    {{/sortable.item}}
+  {{/sort-pane}}
 
-{{#sort-pane
-  group=2
-  items=model.squadC as |sortable|}}
-  {{#sortable.item as |item|}}
-    {{item.content}}
-  {{/sortable.item}}
-{{/sort-pane}}
+  {{#sort-pane
+    group=2
+    isDisabled=true
+    containment=".kanban-board"
+    items=model.squadC as |sortable|}}
+    {{#sortable.item as |item|}}
+      {{item.content}}
+    {{/sortable.item}}
+  {{/sort-pane}}
+
+  {{#sort-pane
+    group=2
+    containment=".kanban-board"
+    items=model.squadD as |sortable|}}
+    {{#sortable.item as |item|}}
+      {{item.content}}
+    {{/sortable.item}}
+  {{/sort-pane}}
+</div>
 
 {{outlet}}

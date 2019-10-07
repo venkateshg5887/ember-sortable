@@ -2,33 +2,47 @@ import Component from '@ember/component';
 import layout from './template';
 import { bind } from '@ember/runloop';
 import { get, set, setProperties, computed } from '@ember/object';
-import $ from 'jquery';
 import { inject } from '@ember/service';
-import { assign } from '@ember/polyfills';
-import { isEqual, isEmpty } from '@ember/utils';
+import { isEqual, isEmpty, isPresent } from '@ember/utils';
 import { reads } from '@ember/object/computed';
 import { assert } from '@ember/debug';
+import { assign } from '@ember/polyfills';
+import SortableContainer from '../../classes/sortable-container';
+import ScrollContainer from '../../classes/scroll-container';
 
-const CONTAINERSIDES = ['Left', 'Right', 'Top', 'Bottom'];
 const DRAGACTIONS = ['mousemove', 'touchmove'];
 const DROPACTIONS = ['mouseup', 'touchend'];
-const MAXSCROLLPRESSURE = 100;
-// const CONTEXTMENUKEYCODE = 3;
+const CONTEXTMENUKEYCODE = 2;
+const PLACEHOLDER_BG_COLOR = '#ccc';
 
 export default Component.extend({
   layout,
-  attributeBindings: ['position'],
-  classNames: ['draggable'],
+  attributeBindings: ['position', 'sortable'],
+  classNames: ['sortable'],
+  sortable: true,
   isDisabled: false,
   sortManager: inject(),
   currentSortPane: reads('sortManager.activeSortPane'),
-  scrollPane: computed('scrollContainer', function() {
-    return this.$().closest(get(this, 'scrollContainer'));
-  }),
+  currentSortPaneElement: reads('sortManager.sortPaneElement'),
   sourceIndex: reads('sortManager.sourceIndex'),
   targetIndex: reads('sortManager.targetIndex'),
-  cloneNode: null,
   isDragEntered: false,
+
+  containmentContainer: computed('containment', 'hackContainment', function() {
+    if (get(this, 'containment')) {
+      let containmentElement = get(this, 'element').closest(`${get(this, 'containment')}`);
+
+      return new ScrollContainer(containmentElement, { containment: !(get(this, 'hackContainment')) });
+    }
+
+    return null;
+  }),
+  scrollContainer: computed('scrollPane', 'currentSortPaneElement', function() {
+    let element = get(this, 'currentSortPaneElement') || get(this, 'element');
+    let scrollContainer = element.closest(`${get(this, 'scrollPane')}`);
+
+    return new ScrollContainer(scrollContainer);
+  }),
 
   init() {
     this._super(...arguments);
@@ -50,19 +64,19 @@ export default Component.extend({
 
     let element = get(this, 'element')
 
-    element.style['touch-action'] = 'none';
+    // element.style['touch-action'] = 'none';
 
     element.addEventListener('mousedown', this._onMouseDown);
-
-    this.$().bind('mousemove.sortabble', this._onDragover);
+    element.addEventListener('dragOver', this._onDragover);
   },
 
   willDestroyElement() {
     this._super(...arguments);
 
-    get(this, 'element').removeEventListener('mousedown', this._onMouseDown);
-    // This should replace with javascript event dispatch
-    this.$().unbind('mousemove.sortabble');
+    let element = get(this, 'element')
+
+    element.removeEventListener('mousedown', this._onMouseDown);
+    element.removeEventListener('dragOver', this._onDragover);
 
     this._detachDragEventManager();
   },
@@ -74,9 +88,11 @@ export default Component.extend({
   },
 
   _onMouseDown(ev) {
-    // if (isEqual(ev.which, CONTEXTMENUKEYCODE)) {
-    //   return;
-    // }
+    if (isEqual(ev.button, CONTEXTMENUKEYCODE) || get(this, 'isDisabled')) {
+      this._preventDefaultBehavior(ev);
+      return;
+    }
+
     // let handle = get(this, 'handle');
 
     // if (handle && !ev.target.closest(handle)) {
@@ -93,7 +109,7 @@ export default Component.extend({
     // this._preventDefaultBehavior(ev);
     this._detachDragEventManager();
 
-    this._cloneDraggable(ev);
+    this._cloneDraggable();
 
     this.sendAction('dragstart', ev);
 
@@ -113,56 +129,17 @@ export default Component.extend({
     this._onDrop();
   },
 
-  _cloneDraggable(ev) {
+  _cloneDraggable() {
     let sortableElement = get(this, 'element');
-    let cloneNode = sortableElement.cloneNode(true);
-    let sortableElementStyle = sortableElement.currentStyle || window.getComputedStyle(sortableElement);
-    let properties = ['margin', 'padding', 'border'];
-    let sortableElementClientRect = sortableElement.getBoundingClientRect();
-
-    let sortableElementContainer = properties.reduce((previousValue, item) => {
-      let subProp = isEqual(item, 'border') ? 'Width' : '';
-
-      CONTAINERSIDES.forEach((side) => {
-        let propertyName = item + side + subProp;
-        previousValue[propertyName] = parseFloat(sortableElementStyle[propertyName]);
-      });
-
-      return previousValue;
-    }, {});
-
-    let shiftX = (ev.clientX + sortableElementContainer.marginLeft) - sortableElementClientRect.left;
-    let shiftY = (ev.clientY + sortableElementContainer.marginTop) - sortableElementClientRect.top;
-    let grabbedAt = {
-      x: ev.clientX - shiftX,
-      y: ev.clientY - shiftY,
-    };
-    let paddingHorizontal = sortableElementContainer.paddingLeft + sortableElementContainer.paddingRight;
-    let paddingVertical = sortableElementContainer.paddingTop + sortableElementContainer.paddingBottom;
-    let borderHorizontal = sortableElementContainer.borderLeftWidth + sortableElementContainer.borderRightWidth;
-    let borderVertical = sortableElementContainer.borderTopWidth + sortableElementContainer.borderBottomWidth;
-    let exactWidth = sortableElement.offsetWidth - (paddingHorizontal + borderHorizontal);
-    let exactHeight = sortableElement.offsetHeight - (paddingVertical + borderVertical);
-
-    sortableElementContainer = assign(
-      {},
-      sortableElementClientRect.toJSON(),
-      {shiftX},
-      {shiftY},
-      sortableElementContainer,
-      {paddingHorizontal},
-      {borderHorizontal},
-      {exactWidth},
-      {exactHeight},
-      {grabbedAt}
-    );
+    let sortableContainer = new SortableContainer(sortableElement);
+    let cloneNode = sortableContainer.cloneNode;
 
     cloneNode.id = `${cloneNode.id}--clone`;
     cloneNode.style.position = 'absolute';
-    cloneNode.style.width = `${sortableElementContainer.exactWidth}px`;
-    cloneNode.style.height = `${sortableElementContainer.exactHeight}px`;
-    cloneNode.style.left = `${sortableElementContainer.grabbedAt.x}px`;
-    cloneNode.style.top = `${sortableElementContainer.grabbedAt.y}px`;
+    cloneNode.style.width = `${sortableContainer.width}px`;
+    cloneNode.style.height = `${sortableContainer.height}px`;
+    cloneNode.style.left = `${sortableContainer.grabbedAt.x}px`;
+    cloneNode.style.top = `${sortableContainer.grabbedAt.y}px`;
     cloneNode.style.zIndex = '9999';
 
     let documentBody = document.getElementsByTagName('body')[0];
@@ -170,97 +147,154 @@ export default Component.extend({
     documentBody.appendChild(cloneNode);
 
     setProperties(this, {
-      cloneNode,
-      sortableElementContainer
+      'sortableContainer': sortableContainer,
+      'sortManager.placeholderStyles': this.getPlaceholderStyles(sortableContainer)
     });
 
+    sortableContainer.startDrag();
+  },
+
+  getPlaceholderStyles(sortableContainer) {
+    return {
+      'width': `${sortableContainer.offsetWidth}px`,
+      'height': `${sortableContainer.offsetHeight}px`,
+      'background-color': PLACEHOLDER_BG_COLOR,
+      'border-radius': sortableContainer.computedDOMStyles.borderRadius,
+      'border-width': sortableContainer.computedDOMStyles.borderWidth,
+      'margin': sortableContainer.computedDOMStyles.margin
+    };
   },
 
   _onDrag(ev) {
     this._preventDefaultBehavior(ev);
 
-    cancelAnimationFrame(this._scrollAnimation);
-
+    let sortableContainer = get(this, 'sortableContainer');
     let sortableElement = get(this, 'element');
-    let cloneNode = get(this, 'cloneNode');
-    let sortableElementContainer = get(this, 'sortableElementContainer');
-    let draggedElement = $(cloneNode);
+    let cloneNode = get(sortableContainer, 'cloneNode');
     let sortManager = get(this, 'sortManager');
     let currentSortPane = get(sortManager, 'sortPaneElement');
+    let containmentContainer = get(this, 'containmentContainer');
 
     sortableElement.style.display = 'none';
-    cloneNode.style.left = `${ev.clientX - sortableElementContainer.shiftX}px`;
-    cloneNode.style.top = `${ev.clientY - sortableElementContainer.shiftY}px`;
+
+    sortableContainer.updatePosition({
+      containmentContainer
+    });
 
     cloneNode.hidden = true;
     let elementFromPoint = document.elementFromPoint(ev.clientX, ev.clientY);
-    let sortabble = $(elementFromPoint).closest('.draggable'); // Check for not pane element (collide happens when nested sortable initialized)
-    let sortPane = $(elementFromPoint).closest('.sortable-pane');
-    cloneNode.hidden = false;
+    let sortabble, sortPane;
 
-    // let newMouseEvent = new MouseEvent("mousemove", {
-    //   bubbles: true,
-    //   cancelable: true,
-    //   view: window
-    // });
+    if (elementFromPoint) {
+      sortabble = elementFromPoint.closest('[sortable]'); // Check for not pane element (collide happens when nested sortable initialized)
+      sortPane = elementFromPoint.closest('[sort-pane]');
+    }
+    cloneNode.hidden = false;
 
     // This should not be css class dependent
     // should be an attribute and readOnly
-    if (sortabble.length) {
-      let newMouseEvent = $.Event('mousemove.sortabble', ev);
-      sortabble.trigger(newMouseEvent);
+    if (isPresent(sortabble)) {
+      const { pageX, pageY } = ev;
+      let dragOverEvent = this._createEvent('dragOver', { pageX, pageY });
+
+      sortabble.dispatchEvent(dragOverEvent);
     }
 
     // This should not be css class dependent
     // should be an attribute and it should be readOnly
-    if (sortPane.length) {
+    if (isPresent(sortPane)) {
 
-      if (isEqual(currentSortPane, sortPane.get(0)) && !get(this, 'isDragEntered')) {
+      cancelAnimationFrame(this.paneScroll);
 
-        sortPane.trigger('dragEnter.sortpane');
+      if (isEqual(currentSortPane, sortPane) && !get(this, 'isDragEntered')) {
+        let dragEnterEvent = this._createEvent('dragEnter');
+        // let sortPaneElement = elementFromPoint.closest(get(this, 'scrollPane'));
+
+        sortPane.dispatchEvent(dragEnterEvent);
         set(this, 'isDragEntered', true);
 
-      } else if (!isEqual(currentSortPane, sortPane.get(0)) && get(this, 'isDragEntered')) {
+      } else if (!isEqual(currentSortPane, sortPane) && get(this, 'isDragEntered')) {
+        let dragLeaveEvent = this._createEvent('dragLeave');
 
-        $(currentSortPane).trigger('dragLeave.sortpane');
+        currentSortPane.dispatchEvent(dragLeaveEvent);
         set(this, 'isDragEntered', false);
-
       }
 
-      set(sortManager, 'sortPaneElement', sortPane.get(0));
+      set(sortManager, 'sortPaneElement', sortPane);
 
+      this._handleScroll(sortableContainer, get(this, 'scrollContainer'), 'paneScroll');
     }
 
-    currentSortPane = get(this, 'currentSortPane');
+    if (containmentContainer) {
+      cancelAnimationFrame(this.containmentContainerScroll);
+      this._handleScroll(sortableContainer, containmentContainer, 'containmentContainerScroll');
+    }
+  },
 
-    let scrollPane = currentSortPane.$().closest(get(currentSortPane, 'scrollContainer'));
+  _handleScroll(sortableContainer, scrollContainer, scrollAnimationQueue) {
+    let vScrollProgress = scrollContainer.clientHeight + scrollContainer.scrollTop;
+    let hScrollProgress = scrollContainer.clientWidth + scrollContainer.scrollLeft;
+    let isNotReachedUp = scrollContainer.scrollTop > 0;
+    let isNotReachedDown = vScrollProgress < scrollContainer.scrollHeight;
+    let isNotReachedLeft = scrollContainer.scrollLeft > 0;
+    let isNotReachedRight = hScrollProgress < scrollContainer.scrollWidth;
 
-    if (this._hasScroll(scrollPane.get(0))) {
-      this._scrollAnimation = requestAnimationFrame(() => {
-        this._handleScroll(scrollPane, draggedElement);
+    if (scrollContainer.maxScrollHeight) {
+
+      if (sortableContainer.tryingScrollTop(scrollContainer) && isNotReachedUp) {
+        let scrollPressure = scrollContainer.top - sortableContainer.cloneNodePosition.top;
+        this._addToScrollAnimation(sortableContainer, scrollContainer, 'top', scrollPressure, scrollAnimationQueue);
+
+      } else if (sortableContainer.tryingScrollBottom(scrollContainer) && isNotReachedDown) {
+        let scrollPressure = sortableContainer.cloneNodePosition.bottom - scrollContainer.bottom;
+        this._addToScrollAnimation(sortableContainer, scrollContainer, 'bottom', scrollPressure, scrollAnimationQueue);
+      }
+    }
+
+    if (scrollContainer.maxScrollWidth) {
+
+      if (sortableContainer.tryingScrollLeft(scrollContainer) && isNotReachedLeft) {
+        let scrollPressure = scrollContainer.left - sortableContainer.cloneNodePosition.left;
+        this._addToScrollAnimation(sortableContainer, scrollContainer, 'left', scrollPressure, scrollAnimationQueue);
+
+      } else if (sortableContainer.tryingScrollRight(scrollContainer) && isNotReachedRight) {
+        let scrollPressure = sortableContainer.cloneNodePosition.right - scrollContainer.right;
+        this._addToScrollAnimation(sortableContainer, scrollContainer, 'right', scrollPressure, scrollAnimationQueue);
+      }
+    }
+  },
+
+  _addToScrollAnimation (sortableContainer, scrollContainer, scrollDirection, scrollPressure, scrollAnimationQueue) {
+    let scrollSpeed = get(this, 'scrollSpeed');
+
+    if (sortableContainer.isDragging) {
+      scrollContainer.triggerScroll(sortableContainer, scrollDirection, scrollSpeed, scrollPressure);
+
+      this[scrollAnimationQueue] = requestAnimationFrame(() => {
+        this._handleScroll(sortableContainer, scrollContainer, scrollAnimationQueue);
       });
     }
   },
 
   _onDrop() {
-    let sortableElement = get(this, 'element');
-    let documentBody = document.getElementsByTagName('body')[0];
+    document.querySelector('body').removeChild(get(this, 'sortableContainer').cloneNode);
 
-    documentBody.removeChild(get(this, 'cloneNode'));
-    sortableElement.removeAttribute('style');
+    get(this, 'element').removeAttribute('style');
 
-    set(this, 'cloneNode', null);
+    get(this, 'sortableContainer').stopDrag();
 
-    get(this, 'currentSortPane').send('updateList', get(this, 'targetIndex'));
+    set(this, 'sortableContainer', null);
+
+    get(this, 'currentSortPane').send('updateList', get(this, 'element'));
   },
 
   _onDragover(ev) {
     if (get(this, 'sortManager.isDragging')) {
 
-      let sortableElement = this.$();
-      let pageY = ev.originalEvent ? ev.originalEvent.pageY : ev.pageY;
-      let top = sortableElement.offset().top;
-      let height = sortableElement.outerHeight();
+      let sortableElement = get(this, 'element');
+      let pageY = ev.detail.pageY;
+      let { top } = sortableElement.getBoundingClientRect();
+      let height = sortableElement.offsetHeight;
       let isDraggingUp = (pageY - top) < (height / 2);
       let position = get(this, 'position');
 
@@ -268,51 +302,15 @@ export default Component.extend({
     }
   },
 
-  _hasScroll(scrollPane) {
-    return scrollPane.scrollHeight > scrollPane.clientHeight;
-  },
+  _createEvent(eventType = 'MyCustomEvent', options = {}) {
+    let defaults = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      detail: options
+    };
+    let mergedOptions = assign({}, defaults);
 
-  _handleScroll(scrollPane, draggedElement) {
-    // convert to vanilla javascript
-    let draggedElementBottom = draggedElement.offset().top + draggedElement.outerHeight(true);
-    let scrollPaneBottom = scrollPane.offset().top + scrollPane.outerHeight(true);
-    let draggedElementTop = draggedElement.offset().top;
-    let scrollPaneTop = scrollPane.offset().top;
-    let paneScrolledTill = scrollPane.get(0).clientHeight + scrollPane.get(0).scrollTop;
-    let paneScrollHeight = scrollPane.prop('scrollHeight');
-    let isDraggingUp = draggedElementTop < scrollPaneTop;
-    let isNotReachedUp = scrollPane.scrollTop() > 0;
-    let isDraggingDown = draggedElementBottom > scrollPaneBottom
-    let isNotReachedDown = paneScrolledTill < paneScrollHeight;
-    let isTryingToScroll = isDraggingUp || isDraggingDown;
-    let scrollPressure = isDraggingDown ? (draggedElementBottom - scrollPaneBottom) : scrollPaneTop - draggedElementTop;
-
-    if (isTryingToScroll) {
-      if (isDraggingUp && isNotReachedUp) {
-        this._scrollPane(scrollPressure, paneScrolledTill, scrollPane, draggedElement, true);
-      }
-
-      if (isDraggingDown && isNotReachedDown) {
-        this._scrollPane(scrollPressure, paneScrolledTill, scrollPane, draggedElement);
-      }
-    }
-  },
-
-  _scrollPane(scrollPressure, paneScrolledTill, scrollPane, draggedElement, isDraggingUp = false) {
-    let scrollSpeed = get(this, 'scrollSpeed');
-
-    if (isDraggingUp) {
-      scrollPane.get(0).scrollTop -= Math.floor(scrollSpeed + (Math.min(scrollPressure, MAXSCROLLPRESSURE) / 10) / 2);
-    } else {
-      scrollPane.get(0).scrollTop += Math.floor(scrollSpeed + (Math.min(scrollPressure, MAXSCROLLPRESSURE) / 10) / 2);
-    }
-
-    this._scrollAnimation = requestAnimationFrame(() => {
-      draggedElement = $(get(this, 'cloneNode'));
-
-      if (draggedElement.length) {
-        this._handleScroll(scrollPane, draggedElement);
-      }
-    });
+    return new CustomEvent(eventType, mergedOptions);
   }
 });

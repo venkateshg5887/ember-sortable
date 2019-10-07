@@ -6,6 +6,7 @@ export default Service.extend({
   currentDropPosition: null,
   sourceIndex: null,
   targetIndex: null,
+  placeholderStyles: null,
 
   sourceList: computed(function() {
     return A();

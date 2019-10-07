@@ -3,5 +3,6 @@ import layout from './template';
 
 export default Component.extend({
   layout,
-  classNames: ['sort-placeholder']
+  attributeBindings: ['style']
+  // classNames: ['sort-placeholder']
 });
