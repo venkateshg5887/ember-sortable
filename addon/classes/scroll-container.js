@@ -1,99 +1,109 @@
 import Container from './container';
 
-const MAXSCROLLPRESSURE = 100;
+const MAX_SCROLL_PRESSURE = 100;
+const DEFAULT_SCROLL_SPEED = 3;
 
 export default class ScrollContainer extends Container {
   constructor(element, options) {
     super(element);
 
-    this.scrollHeight = this.element.scrollHeight;
-    this.scrollWidth = this.element.scrollWidth;
+    this.scrollAnimationID = '_dndPaneScroll';
     this.maxScrollHeight = this.scrollHeight - (this.offsetHeight - this.verticalBorderWidth);
     this.maxScrollWidth = this.scrollWidth - (this.offsetWidth - this.horizontalBorderWidth);
+    this.scrollSpeed = DEFAULT_SCROLL_SPEED;
 
     Object.assign(this, options);
+  }
+
+  get scrollHeight() {
+    return this.element.scrollHeight;
+  }
+
+  get scrollWidth() {
+    return this.element.scrollWidth;
   }
 
   get scrollTop() {
     return this.element.scrollTop;
   }
 
-  set scrollTop(value) {
-    this.element.scrollTop = value;
-  }
-
   get scrollLeft() {
     return this.element.scrollLeft;
   }
 
-  set scrollLeft(value) {
-    this.element.scrollLeft = value;
+  handleScroll(sortableContainer, scrollContainer) {
+    this._flushScrollQueue();
+    this._scrollEngine(sortableContainer, scrollContainer);
   }
 
-  handleScroll(sortableContainer, scrollSpeed = 5) {
+  _scrollEngine(sortableContainer) {
+    let vScrollProgress = this.clientHeight + this.scrollTop;
+    let hScrollProgress = this.clientWidth + this.scrollLeft;
+    let isNotReachedUp = this.scrollTop > 0;
+    let isNotReachedDown = vScrollProgress < this.scrollHeight;
+    let isNotReachedLeft = this.scrollLeft > 0;
+    let isNotReachedRight = hScrollProgress < this.scrollWidth;
+
     if (this.maxScrollHeight) {
 
-      if (this.tryingScrollTop(sortableContainer)) {
+      if (sortableContainer.tryingScrollTop(this) && isNotReachedUp) {
         let scrollPressure = this.top - sortableContainer.cloneNodePosition.top;
-        this.addToScrollQueue(sortableContainer, 'top', scrollSpeed, scrollPressure);
+        this._addToScrollQueue(sortableContainer, 'top', scrollPressure);
 
-      } else if (this.tryingScrollBottom(sortableContainer)) {
+      } else if (sortableContainer.tryingScrollBottom(this) && isNotReachedDown) {
         let scrollPressure = sortableContainer.cloneNodePosition.bottom - this.bottom;
-        this.addToScrollQueue(sortableContainer, 'bottom', scrollSpeed, scrollPressure);
+        this._addToScrollQueue(sortableContainer, 'bottom', scrollPressure);
       }
     }
 
     if (this.maxScrollWidth) {
 
-      if (this.tryingScrollLeft(sortableContainer)) {
+      if (sortableContainer.tryingScrollLeft(this) && isNotReachedLeft) {
         let scrollPressure = this.left - sortableContainer.cloneNodePosition.left;
-        this.addToScrollQueue(sortableContainer, 'left', scrollSpeed, scrollPressure);
+        this._addToScrollQueue(sortableContainer, 'left', scrollPressure);
 
-      } else if (this.tryingScrollRight(sortableContainer)) {
+      } else if (sortableContainer.tryingScrollRight(this) && isNotReachedRight) {
         let scrollPressure = sortableContainer.cloneNodePosition.right - this.right;
-        this.addToScrollQueue(sortableContainer, 'right', scrollSpeed, scrollPressure);
+        this._addToScrollQueue(sortableContainer, 'right', scrollPressure);
       }
     }
   }
 
-  addToScrollQueue(sortableContainer, scrollDirection, scrollSpeed, scrollPressure) {
-    // this._scrollQueue = window.requestAnimationFrame(() => {
-      this.triggerScroll(sortableContainer, scrollDirection, this._getScrollValue(scrollSpeed, scrollPressure));
-    // });
+  _addToScrollQueue (sortableContainer, scrollDirection, scrollPressure) {
+    if (sortableContainer.isDragging) {
+      this.triggerScroll(sortableContainer, scrollDirection, scrollPressure);
+
+      window[this.scrollAnimationID] = requestAnimationFrame(() => {
+        this._scrollEngine(sortableContainer);
+      });
+    }
   }
 
-  triggerScroll(sortableContainer, direction, scrollSpeed, scrollPressure) {
-    let scrollValue = this._getScrollValue(scrollSpeed, scrollPressure);
-    let scrollContainer = this;
+  triggerScroll(sortableContainer, direction, scrollPressure) {
+    let scrollValue = this._getScrollValue(scrollPressure);
     let scrollTo = {
       top() {
-        scrollContainer.element.scrollTop -= scrollValue;
+        this.element.scrollTop -= scrollValue;
       },
       bottom() {
-        scrollContainer.element.scrollTop += scrollValue;
+        this.element.scrollTop += scrollValue;
       },
       left() {
-        scrollContainer.element.scrollLeft -= scrollValue;
+        this.element.scrollLeft -= scrollValue;
       },
       right() {
-        scrollContainer.element.scrollLeft += scrollValue;
+        this.element.scrollLeft += scrollValue;
       }
     }
 
-    scrollTo[direction]();
-
-    // this._scrollQueue = window.requestAnimationFrame(() => {
-    //   if (sortableContainer.isDragging) {
-    //     this.handleScroll(sortableContainer);
-    //   }
-    // });
+    scrollTo[direction]['apply'](this);
   }
 
-  cancelScrollQueue() {
-    window.cancelAnimationFrame(this._scrollQueue);
+  _flushScrollQueue() {
+    window.cancelAnimationFrame(window[this.scrollAnimationID]);
   }
 
-  _getScrollValue(scrollSpeed, scrollPressure) {
-    return Math.floor(scrollSpeed + (Math.min(scrollPressure, MAXSCROLLPRESSURE) / 10) / 2)
+  _getScrollValue(scrollPressure) {
+    return Math.floor(this.scrollSpeed + (Math.min(scrollPressure, MAX_SCROLL_PRESSURE) / 10) / 2)
   }
 }

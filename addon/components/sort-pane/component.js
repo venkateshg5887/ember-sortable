@@ -47,15 +47,18 @@ export default Component.extend({
 
     return htmlSafe(concatStyles.join(';'));
   }),
+
   isConnected: computed('sortManager.sourceGroup', 'group', function() {
     let currentGroup = get(this, 'group');
     let sourceGroup = get(this, 'sortManager.sourceGroup');
 
     return isEqual(currentGroup, sourceGroup);
   }),
+
   isActiveSortPane: computed('sortManager.activeSortPane', function() {
     return isEqual(this, get(this, 'sortManager.activeSortPane'));
   }),
+
   collection: computed('items.[]', function() {
     // return convertToArray(get(this, 'items'));
     return get(this, 'items');
@@ -171,6 +174,12 @@ export default Component.extend({
 
       this.sendAction('onDragStart', item, collection, sourceIndex);
     },
+    onDrag() {
+      this.sendAction('onDrag', ...arguments);
+    },
+    onDragEnd() {
+      this.sendAction('onDragEnd', ...arguments);
+    },
     updateDragState($element, overOnTopHalf, currentOverIndex) {
       // Need to bring in the sort-item calculation logic here
       let sortManager = get(this, 'sortManager');
@@ -186,6 +195,8 @@ export default Component.extend({
         targetIndex,
         sourceIndex
       });
+
+      this.sendAction('onDragover');
     },
     updateList(draggedElement) {
       let targetList = get(this, 'targetList');
@@ -210,7 +221,7 @@ export default Component.extend({
           }
         }).catch((err) => {
           // eslint-disable-next-line no-console
-          console.error(err);
+          // console.error(err);
           this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
         });
       }

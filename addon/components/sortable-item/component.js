@@ -18,7 +18,7 @@ const PLACEHOLDER_BG_COLOR = '#ccc';
 export default Component.extend({
   layout,
   attributeBindings: ['position', 'sortable'],
-  classNames: ['sortable'],
+  classNames: ['sortable', 'dragState'],
   sortable: true,
   isDisabled: false,
   sortManager: inject(),
@@ -27,16 +27,25 @@ export default Component.extend({
   sourceIndex: reads('sortManager.sourceIndex'),
   targetIndex: reads('sortManager.targetIndex'),
   isDragEntered: false,
+  dragState: null,
 
-  containmentContainer: computed('containment', 'hackContainment', function() {
+  documentWindow: computed(function() {
+    return document.querySelector('body');
+  }),
+
+  containmentContainer: computed('containment', function() {
     if (get(this, 'containment')) {
       let containmentElement = get(this, 'element').closest(`${get(this, 'containment')}`);
 
-      return new ScrollContainer(containmentElement, { containment: !(get(this, 'hackContainment')) });
+      return new ScrollContainer(containmentElement, {
+        containment: true,
+        scrollAnimationID: '_dndContainmentScroll'
+      });
     }
 
     return null;
   }),
+
   scrollContainer: computed('scrollPane', 'currentSortPaneElement', function() {
     let element = get(this, 'currentSortPaneElement') || get(this, 'element');
     let scrollContainer = element.closest(`${get(this, 'scrollPane')}`);
@@ -135,6 +144,7 @@ export default Component.extend({
     let cloneNode = sortableContainer.cloneNode;
 
     cloneNode.id = `${cloneNode.id}--clone`;
+    cloneNode.classList.add('drag-started');
     cloneNode.style.position = 'absolute';
     cloneNode.style.width = `${sortableContainer.width}px`;
     cloneNode.style.height = `${sortableContainer.height}px`;
@@ -142,9 +152,8 @@ export default Component.extend({
     cloneNode.style.top = `${sortableContainer.grabbedAt.y}px`;
     cloneNode.style.zIndex = '9999';
 
-    let documentBody = document.getElementsByTagName('body')[0];
-
-    documentBody.appendChild(cloneNode);
+    get(this, 'documentWindow').classList.add('sortable-attached');
+    get(this, 'documentWindow').appendChild(cloneNode);
 
     setProperties(this, {
       'sortableContainer': sortableContainer,
@@ -152,6 +161,8 @@ export default Component.extend({
     });
 
     sortableContainer.startDrag();
+
+    cloneNode.classList.add('dragging');
   },
 
   getPlaceholderStyles(sortableContainer) {
@@ -183,16 +194,14 @@ export default Component.extend({
 
     cloneNode.hidden = true;
     let elementFromPoint = document.elementFromPoint(ev.clientX, ev.clientY);
-    let sortabble, sortPane;
+    let sortabble, sortPaneElement;
 
     if (elementFromPoint) {
       sortabble = elementFromPoint.closest('[sortable]'); // Check for not pane element (collide happens when nested sortable initialized)
-      sortPane = elementFromPoint.closest('[sort-pane]');
+      sortPaneElement = elementFromPoint.closest('[sort-pane]');
     }
     cloneNode.hidden = false;
 
-    // This should not be css class dependent
-    // should be an attribute and readOnly
     if (isPresent(sortabble)) {
       const { pageX, pageY } = ev;
       let dragOverEvent = this._createEvent('dragOver', { pageX, pageY });
@@ -200,91 +209,43 @@ export default Component.extend({
       sortabble.dispatchEvent(dragOverEvent);
     }
 
-    // This should not be css class dependent
-    // should be an attribute and it should be readOnly
-    if (isPresent(sortPane)) {
+    if (isPresent(sortPaneElement)) {
 
-      cancelAnimationFrame(this.paneScroll);
-
-      if (isEqual(currentSortPane, sortPane) && !get(this, 'isDragEntered')) {
+      if (isEqual(currentSortPane, sortPaneElement) && !get(this, 'isDragEntered')) {
         let dragEnterEvent = this._createEvent('dragEnter');
-        // let sortPaneElement = elementFromPoint.closest(get(this, 'scrollPane'));
+        // let scrollPaneElement = sortPaneElement.closest(get(this, 'scrollPane'));
 
-        sortPane.dispatchEvent(dragEnterEvent);
+        sortPaneElement.dispatchEvent(dragEnterEvent);
         set(this, 'isDragEntered', true);
 
-      } else if (!isEqual(currentSortPane, sortPane) && get(this, 'isDragEntered')) {
+      } else if (!isEqual(currentSortPane, sortPaneElement) && get(this, 'isDragEntered')) {
         let dragLeaveEvent = this._createEvent('dragLeave');
 
         currentSortPane.dispatchEvent(dragLeaveEvent);
         set(this, 'isDragEntered', false);
       }
 
-      set(sortManager, 'sortPaneElement', sortPane);
+      set(sortManager, 'sortPaneElement', sortPaneElement);
 
-      this._handleScroll(sortableContainer, get(this, 'scrollContainer'), 'paneScroll');
+      get(this, 'scrollContainer').handleScroll(sortableContainer);
     }
 
     if (containmentContainer) {
-      cancelAnimationFrame(this.containmentContainerScroll);
-      this._handleScroll(sortableContainer, containmentContainer, 'containmentContainerScroll');
-    }
-  },
-
-  _handleScroll(sortableContainer, scrollContainer, scrollAnimationQueue) {
-    let vScrollProgress = scrollContainer.clientHeight + scrollContainer.scrollTop;
-    let hScrollProgress = scrollContainer.clientWidth + scrollContainer.scrollLeft;
-    let isNotReachedUp = scrollContainer.scrollTop > 0;
-    let isNotReachedDown = vScrollProgress < scrollContainer.scrollHeight;
-    let isNotReachedLeft = scrollContainer.scrollLeft > 0;
-    let isNotReachedRight = hScrollProgress < scrollContainer.scrollWidth;
-
-    if (scrollContainer.maxScrollHeight) {
-
-      if (sortableContainer.tryingScrollTop(scrollContainer) && isNotReachedUp) {
-        let scrollPressure = scrollContainer.top - sortableContainer.cloneNodePosition.top;
-        this._addToScrollAnimation(sortableContainer, scrollContainer, 'top', scrollPressure, scrollAnimationQueue);
-
-      } else if (sortableContainer.tryingScrollBottom(scrollContainer) && isNotReachedDown) {
-        let scrollPressure = sortableContainer.cloneNodePosition.bottom - scrollContainer.bottom;
-        this._addToScrollAnimation(sortableContainer, scrollContainer, 'bottom', scrollPressure, scrollAnimationQueue);
-      }
+      containmentContainer.handleScroll(sortableContainer);
     }
 
-    if (scrollContainer.maxScrollWidth) {
-
-      if (sortableContainer.tryingScrollLeft(scrollContainer) && isNotReachedLeft) {
-        let scrollPressure = scrollContainer.left - sortableContainer.cloneNodePosition.left;
-        this._addToScrollAnimation(sortableContainer, scrollContainer, 'left', scrollPressure, scrollAnimationQueue);
-
-      } else if (sortableContainer.tryingScrollRight(scrollContainer) && isNotReachedRight) {
-        let scrollPressure = sortableContainer.cloneNodePosition.right - scrollContainer.right;
-        this._addToScrollAnimation(sortableContainer, scrollContainer, 'right', scrollPressure, scrollAnimationQueue);
-      }
-    }
-  },
-
-  _addToScrollAnimation (sortableContainer, scrollContainer, scrollDirection, scrollPressure, scrollAnimationQueue) {
-    let scrollSpeed = get(this, 'scrollSpeed');
-
-    if (sortableContainer.isDragging) {
-      scrollContainer.triggerScroll(sortableContainer, scrollDirection, scrollSpeed, scrollPressure);
-
-      this[scrollAnimationQueue] = requestAnimationFrame(() => {
-        this._handleScroll(sortableContainer, scrollContainer, scrollAnimationQueue);
-      });
-    }
+    this.sendAction('onDrag', sortableContainer);
   },
 
   _onDrop() {
-    document.querySelector('body').removeChild(get(this, 'sortableContainer').cloneNode);
 
+    this.sendAction('dragend');
+
+    get(this, 'documentWindow').classList.remove('sortable-attached');
+    get(this, 'documentWindow').removeChild(get(this, 'sortableContainer').cloneNode);
     get(this, 'element').removeAttribute('style');
-
     get(this, 'sortableContainer').stopDrag();
-
     set(this, 'sortableContainer', null);
-
     get(this, 'currentSortPane').send('updateList', get(this, 'element'));
   },
 

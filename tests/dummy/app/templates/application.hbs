@@ -3,7 +3,6 @@
 <div class="kanban-board">
   {{#sort-pane
     group=1
-    containment=".kanban-board"
     onDrop=(action 'test')
     items=model.squadA as |sortable|}}
     {{#sortable.item as |item|}}
