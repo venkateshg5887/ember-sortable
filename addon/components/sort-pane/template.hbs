@@ -14,7 +14,8 @@
       scrollSpeed=scrollSpeed
       dragstart=(action 'onDragStart' item idx)
       dragend=(action 'onDragEnd')
-      dragover=(action 'updateDragState'))
+      dragover=(action 'onDragover')
+      onDrop=(action 'onDrop'))
   )}}
 
   {{#if (and isActiveSortPane (eq currentOverIndex idx) overOnBottomHalf)}}

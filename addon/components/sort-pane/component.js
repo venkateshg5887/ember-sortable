@@ -2,13 +2,14 @@ import Component from '@ember/component';
 import layout from './template';
 import { inject } from '@ember/service';
 import { isEqual, isEmpty } from '@ember/utils';
-import { get, set, setProperties, computed } from '@ember/object';
+import { get, getProperties, set, setProperties, computed } from '@ember/object';
 import { reads, not } from '@ember/object/computed';
 // import { A } from '@ember/array';
 import { bind } from '@ember/runloop';
 import { assert } from '@ember/debug';
 import { htmlSafe } from '@ember/template';
 import { Promise } from 'rsvp';
+import ScrollContainer from '../../classes/scroll-container';
 
 // let convertToArray = (collection) => {
 //   if (collection.toArray) {
@@ -21,7 +22,8 @@ import { Promise } from 'rsvp';
 export default Component.extend({
   layout,
   classNames: ['sort-pane'],
-  attributeBindings: ['sortPane:sort-pane'],
+  classNameBindings: ['isDisabled:disabled'],
+  attributeBindings: ['sortPane:sort-pane', 'isDisabled:disabled'],
   sortPane: true,
   sortManager: inject(),
   sourceList: reads('sortManager.sourceList'),
@@ -39,6 +41,10 @@ export default Component.extend({
   containment: null,
   isDisabled: false,
 
+  scrollContainer: computed(function() {
+    let scrollPaneElement = get(this, 'element').closest(get(this, 'scrollPane'));
+    return new ScrollContainer(scrollPaneElement);
+  }),
   placeholderStyles: computed('sortManager.placeholderStyles', function() {
     let styles = get(this, 'sortManager.placeholderStyles');
     let concatStyles = Object.keys(styles).map((prop) => {
@@ -71,6 +77,7 @@ export default Component.extend({
 
     this._onDragenter = bind(this, this._onDragenter);
     this._onDragleave = bind(this, this._onDragleave);
+    this._drag = bind(this, this._drag);
   },
 
   didInsertElement() {
@@ -81,6 +88,7 @@ export default Component.extend({
     // Registering Events
     element.addEventListener('dragEnter', this._onDragenter);
     element.addEventListener('dragLeave', this._onDragleave);
+    element.addEventListener('drag', this._drag);
   },
 
   willDestroyElement() {
@@ -91,12 +99,32 @@ export default Component.extend({
     // Teardown Events
     element.removeEventListener('dragEnter', this._onDragenter);
     element.removeEventListener('dragLeave', this._onDragleave);
+    element.removeEventListener('drag', this._drag);
+  },
+
+  _drag(ev) {
+    if (!get(this, 'isDisabled')) {
+      let sortableContainer = get(this, 'sortManager.sortableContainer');
+      let scrollContainer = get(this, 'scrollContainer');
+
+      scrollContainer.handleScroll(sortableContainer);
+
+      this.sendAction('onDrag', ev, sortableContainer);
+    }
   },
 
   _onDragenter() {
-    if (get(this, 'isNotConnected') || get(this, 'isActiveSortPane')) {
+    let {
+      isNotConnected,
+      isActiveSortPane,
+      isDisabled
+    } = getProperties(this, ['isNotConnected', 'isActiveSortPane', 'isDisabled']);
+
+    if (isNotConnected || isActiveSortPane || isDisabled) {
       return;
     }
+
+    set(this, 'sortManager.isDragEntered', true);
 
     let sortManager = get(this, 'sortManager');
     let targetList = get(this, 'collection');
@@ -104,6 +132,7 @@ export default Component.extend({
     let activeSortPane = this;
     let isSamePane = isEqual(sourceList, targetList);
     let targetIndex = get(targetList, 'length');
+    // Math required to solve out of range index error
     let currentOverIndex = targetIndex - 1;
     // This will show placeholder at the End of the list
     // when we Enter the sort-pane's empty space
@@ -126,19 +155,16 @@ export default Component.extend({
   },
 
   _onDragleave() {
+    setProperties(this, {
+      'sortManager.activeSortPane': null,
+      'sortManager.isDragEntered': false
+    });
+
     this.sendAction('onDragleave');
   },
 
   _resetSortManager() {
-    let sortManager = get(this, 'sortManager');
-
-    setProperties(sortManager, {
-      isDragging: false,
-      targetIndex: null,
-      draggedItem: null,
-      currentOverIndex: null,
-      sortPane: null
-    });
+    get(this, 'sortManager').reset();
   },
 
   applyChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex) {
@@ -162,48 +188,31 @@ export default Component.extend({
       let activeSortPane = this;
 
       setProperties(sortManager, {
-        'sourceList': collection,
-        'targetList': collection,
-        'isDragging': true,
-        'sourceGroup': get(this, 'group'),
-        'draggedItem': item,
-        'targetIndex': sourceIndex,
+        isDragging: true,
+        sourceList: collection,
+        targetList: collection,
         sourceIndex,
+        targetIndex: sourceIndex,
+        sourceGroup: get(this, 'group'),
+        draggedItem: item,
         activeSortPane
       });
 
       this.sendAction('onDragStart', item, collection, sourceIndex);
     },
-    onDrag() {
-      this.sendAction('onDrag', ...arguments);
-    },
     onDragEnd() {
       this.sendAction('onDragEnd', ...arguments);
     },
-    updateDragState($element, overOnTopHalf, currentOverIndex) {
-      // Need to bring in the sort-item calculation logic here
-      let sortManager = get(this, 'sortManager');
-      let sourceIndex = get(this, 'sourceIndex');
-      let sourceList = get(this, 'sourceList');
-      let targetList = get(this, 'targetList');
-      let sortAdjuster = (isEqual(sourceList, targetList) && currentOverIndex > sourceIndex) ? 1 : 0;
-      let targetIndex = (overOnTopHalf ? currentOverIndex : (currentOverIndex + 1)) - sortAdjuster;
-
-      setProperties(sortManager, {
-        overOnTopHalf,
-        currentOverIndex,
-        targetIndex,
-        sourceIndex
-      });
-
-      this.sendAction('onDragover');
+    onDragover() {
+      this.sendAction('onDragover', ...arguments);
     },
-    updateList(draggedElement) {
+    onDrop(draggedElement) {
       let targetList = get(this, 'targetList');
       let targetIndex = get(this, 'targetIndex');
       let sourceList = get(this, 'sourceList');
       let sourceIndex = get(this, 'sourceIndex');
       let draggedItem = get(this, 'draggedItem');
+      let componentIsLiving = !(get(this, 'isDestroyed') && get(this, 'isDestroyed'));
 
       if (!(isEqual(sourceList, targetList) && isEqual(sourceIndex, targetIndex))) {
 
@@ -216,13 +225,15 @@ export default Component.extend({
         set(this, 'dropActionInFlight', true);
 
         dropAction.then((updateList = true) => {
-          if (updateList === false) {
+          if (updateList === false && componentIsLiving) {
             this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
           }
-        }).catch((err) => {
+        }).catch((/*err*/) => {
           // eslint-disable-next-line no-console
           // console.error(err);
-          this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
+          if (componentIsLiving) {
+            this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
+          }
         });
       }
 

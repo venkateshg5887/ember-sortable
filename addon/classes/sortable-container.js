@@ -52,10 +52,12 @@ export default class SortableContainer extends Container {
 
   startDrag() {
     this.isDragging = true;
+    this.cloneNode.classList.add('drag-started', 'dragging');
   }
 
   stopDrag() {
     this.isDragging = false;
+    this.cloneNode.classList.remove('drag-started', 'dragging');
   }
 
   updatePosition({ containmentContainer } = {}) {
