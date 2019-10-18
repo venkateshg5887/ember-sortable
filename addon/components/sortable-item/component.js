@@ -262,8 +262,8 @@ export default Component.extend({
       let overOnTopHalf = (pageY - top) < (height / 2);
       let currentOverIndex = get(this, 'position');
       let sortManager = get(this, 'sortManager');
-      let sourceList = get(this, 'sourceList');
-      let targetList = get(this, 'targetList');
+      let sourceList = get(sortManager, 'sourceList');
+      let targetList = get(sortManager, 'targetList');
       let sourceIndex = get(this, 'sourceIndex');
       let sortAdjuster = (isEqual(sourceList, targetList) && currentOverIndex > sourceIndex) ? 1 : 0;
       let targetIndex = (overOnTopHalf ? currentOverIndex : (currentOverIndex + 1)) - sortAdjuster;
@@ -271,8 +271,7 @@ export default Component.extend({
       setProperties(sortManager, {
         overOnTopHalf,
         currentOverIndex,
-        targetIndex,
-        sourceIndex
+        targetIndex
       });
 
       this.sendAction('onDragover');
