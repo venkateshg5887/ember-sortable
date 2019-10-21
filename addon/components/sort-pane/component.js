@@ -212,7 +212,6 @@ export default Component.extend({
       let sourceList = get(this, 'sourceList');
       let sourceIndex = get(this, 'sourceIndex');
       let draggedItem = get(this, 'draggedItem');
-      let componentIsLiving = !(get(this, 'isDestroyed') && get(this, 'isDestroyed'));
 
       if (!(isEqual(sourceList, targetList) && isEqual(sourceIndex, targetIndex))) {
 
@@ -225,13 +224,13 @@ export default Component.extend({
         set(this, 'dropActionInFlight', true);
 
         dropAction.then((updateList = true) => {
-          if (updateList === false && componentIsLiving) {
+          if (updateList === false && !(get(this, 'isDestroyed') && get(this, 'isDestroying'))) {
             this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
           }
         }).catch((/*err*/) => {
           // eslint-disable-next-line no-console
           // console.error(err);
-          if (componentIsLiving) {
+          if (!(get(this, 'isDestroyed') && get(this, 'isDestroying'))) {
             this.resetChanges(draggedItem, sourceList, sourceIndex, targetList, targetIndex);
           }
         });

@@ -246,8 +246,9 @@ export default Component.extend({
     get(this, 'element').removeAttribute('style');
     get(this, 'sortableContainer').stopDrag();
 
-    // this.sendAction('onDrop');
-    get(this, 'currentSortPane').send('onDrop', get(this, 'element'));
+    if(get(this, 'currentSortPane')) {
+      get(this, 'currentSortPane').send('onDrop', get(this, 'element'));
+    }
   },
 
   _onDragover(ev) {
