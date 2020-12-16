@@ -60,6 +60,11 @@ export default Component.extend({
   //   return new ScrollContainer(scrollContainer);
   // }),
 
+  // Events
+  dragstart() {},
+  dragend() {},
+  onDragover() {},
+
   init() {
     this._super(...arguments);
 
@@ -126,7 +131,7 @@ export default Component.extend({
 
     this._cloneDraggable();
 
-    this.sendAction('dragstart', ev);
+    this.dragstart(ev);
 
     DRAGACTIONS.forEach(event => window.addEventListener(event, this._onDrag));
     DROPACTIONS.forEach(event => window.addEventListener(event, this._tearDownDragEvents));
@@ -239,7 +244,7 @@ export default Component.extend({
   },
 
   _onDrop() {
-    this.sendAction('dragend');
+    this.dragend();
 
     get(this, 'documentWindow').classList.remove('sortable-attached');
     get(this, 'documentWindow').removeChild(get(this, 'sortableContainer').cloneNode);
@@ -275,7 +280,7 @@ export default Component.extend({
         targetIndex
       });
 
-      this.sendAction('onDragover');
+      this.onDragover();
     }
   },
 

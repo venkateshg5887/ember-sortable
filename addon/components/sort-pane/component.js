@@ -41,6 +41,14 @@ export default Component.extend({
   containment: null,
   isDisabled: false,
 
+  // Events
+  onDrag() {},
+  onDragenter() {},
+  onDragleave() {},
+  onDragStart() {},
+  onDragEnd() {},
+  onDragover() {},
+
   scrollContainer: computed(function() {
     let scrollPaneElement = get(this, 'element').closest(get(this, 'scrollPane'));
     return new ScrollContainer(scrollPaneElement);
@@ -109,7 +117,7 @@ export default Component.extend({
 
       scrollContainer.handleScroll(sortableContainer);
 
-      this.sendAction('onDrag', ev, sortableContainer);
+      this.onDrag(ev, sortableContainer);
     }
   },
 
@@ -151,7 +159,7 @@ export default Component.extend({
       overOnTopHalf
     });
 
-    this.sendAction('onDragenter');
+    this.onDragenter();
   },
 
   _onDragleave() {
@@ -160,7 +168,7 @@ export default Component.extend({
       'sortManager.isDragEntered': false
     });
 
-    this.sendAction('onDragleave');
+    this.onDragleave();
   },
 
   _resetSortManager() {
@@ -198,13 +206,13 @@ export default Component.extend({
         activeSortPane
       });
 
-      this.sendAction('onDragStart', item, collection, sourceIndex);
+      this.onDragStart(item, collection, sourceIndex);
     },
     onDragEnd() {
-      this.sendAction('onDragEnd', ...arguments);
+      this.onDragEnd(...arguments);
     },
     onDragover() {
-      this.sendAction('onDragover', ...arguments);
+      this.onDragover(...arguments);
     },
     onDrop(draggedElement) {
       let targetList = get(this, 'targetList');
